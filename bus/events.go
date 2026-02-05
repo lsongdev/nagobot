@@ -3,6 +3,8 @@ package bus
 
 import (
 	"encoding/json"
+	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -130,10 +132,10 @@ type AgentErrorData struct {
 // Helper Functions
 // ============================================================================
 
-var eventCounter int64
+var eventCounter atomic.Int64
 
 // generateEventID generates a unique event ID.
 func generateEventID() string {
-	eventCounter++
-	return time.Now().Format("20060102150405") + "-" + string(rune(eventCounter))
+	n := eventCounter.Add(1)
+	return fmt.Sprintf("evt-%d-%d", time.Now().UnixMilli(), n)
 }

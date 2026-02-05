@@ -38,43 +38,7 @@ func (r *Runner) Run(ctx context.Context, systemPrompt, userMessage string) (str
 		provider.SystemMessage(systemPrompt),
 		provider.UserMessage(userMessage),
 	}
-
-	toolDefs := r.tools.Defs()
-
-	for i := 0; i < r.maxIter; i++ {
-		// Call provider
-		resp, err := r.provider.Chat(ctx, &provider.Request{
-			Messages: messages,
-			Tools:    toolDefs,
-		})
-		if err != nil {
-			return "", fmt.Errorf("provider error: %w", err)
-		}
-
-		// No tool calls = done
-		if !resp.HasToolCalls() {
-			return resp.Content, nil
-		}
-
-		// Add assistant message with tool calls
-		messages = append(messages, provider.AssistantMessageWithTools(resp.Content, resp.ToolCalls))
-
-		// Execute tool calls
-		for _, tc := range resp.ToolCalls {
-			result := r.tools.Run(ctx, tc.Function.Name, tc.Arguments)
-			if strings.HasPrefix(result, "Error:") {
-				logger.Error(
-					"tool error",
-					"tool", tc.Function.Name,
-					"toolCallID", tc.ID,
-					"err", result,
-				)
-			}
-			messages = append(messages, provider.ToolResultMessage(tc.ID, tc.Function.Name, result))
-		}
-	}
-
-	return "", errors.New("max iterations exceeded")
+	return r.RunWithMessages(ctx, messages)
 }
 
 // RunWithMessages executes the agent loop with pre-built messages.

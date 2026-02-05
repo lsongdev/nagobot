@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/linanwx/nagobot/logger"
@@ -209,7 +210,7 @@ func (b *Bus) matchSubscription(sub *Subscription, event *Event) bool {
 
 // generateSubID generates a subscription ID.
 func generateSubID(counter int64) string {
-	return "sub-" + string(rune('a'+counter%26)) + string(rune(counter))
+	return fmt.Sprintf("sub-%d", counter)
 }
 
 // ============================================================================

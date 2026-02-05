@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"path/filepath"
 	"time"
 
 	"github.com/linanwx/nagobot/agent"
@@ -134,24 +135,25 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	// Create and start scheduler
-	scheduler := cron.NewScheduler()
-
-	// Add example scheduled jobs
-	// Memory cleanup job - runs every hour
-	scheduler.Add(cron.NewJob(
-		"memory-cleanup",
-		"Memory Cleanup",
-		cron.Every(1*time.Hour),
-		func(ctx context.Context) error {
-			// Trigger GC
-			logger.Debug("running memory cleanup")
-			return nil
-		},
-	).WithDescription("Periodic memory cleanup"))
-
-	if err := scheduler.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start scheduler: %w", err)
+	// Create and start cron service
+	workspace, err := cfg.WorkspacePath()
+	if err != nil {
+		return fmt.Errorf("failed to get workspace: %w", err)
+	}
+	cronPath := filepath.Join(workspace, "cron.yaml")
+	cronSvc, err := cron.NewService(cronPath)
+	if err != nil {
+		logger.Warn("cron service not started", "err", err)
+	}
+	if cronSvc != nil {
+		cronSvc.Start(func(ctx context.Context, job cron.Job) error {
+			logger.Info("cron job triggered", "id", job.ID, "name", job.Name)
+			_, err := ag.Run(ctx, job.Payload.Message)
+			return err
+		})
+		if err := cronSvc.StartWatching(); err != nil {
+			logger.Warn("cron file watcher failed", "err", err)
+		}
 	}
 
 	// Create and start heartbeat monitor
@@ -191,8 +193,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Error("error stopping channels", "err", err)
 	}
 
-	if err := scheduler.Stop(); err != nil {
-		logger.Error("error stopping scheduler", "err", err)
+	if cronSvc != nil {
+		cronSvc.Stop()
 	}
 
 	if err := heartbeat.Stop(); err != nil {

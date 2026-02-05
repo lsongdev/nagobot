@@ -167,9 +167,6 @@ func (a *Agent) createSubagentRunner() bus.SubagentRunner {
 	return func(ctx context.Context, task *bus.SubagentTask) (string, error) {
 		// task.Type contains the agent name (from agents/ directory)
 		agentName := task.Type
-		if agentName == "" {
-			return "", fmt.Errorf("agent name is required (available: %v)", a.agents.List())
-		}
 
 		// Create a tool registry for the subagent (without spawn tools to prevent recursion)
 		subTools := tools.NewRegistry()

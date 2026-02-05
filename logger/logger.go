@@ -140,13 +140,7 @@ func sanitizeKeyvals(args []any) []any {
 	for i := 0; i < len(args); i += 2 {
 		key, _ := args[i].(string)
 		val := args[i+1]
-		if isSensitiveKey(key) {
-			if !isTokenCount(key, val) {
-				safe = append(safe, key, "[REDACTED]")
-				continue
-			}
-		}
-		if isSensitiveValue(val) {
+		if isSensitiveKey(key) && !isTokenCount(key, val) {
 			safe = append(safe, key, "[REDACTED]")
 			continue
 		}
@@ -185,23 +179,3 @@ func isTokenCount(key string, val any) bool {
 	}
 }
 
-func isSensitiveValue(val any) bool {
-	s, ok := val.(string)
-	if !ok {
-		return false
-	}
-	v := strings.ToLower(s)
-	if strings.Contains(v, "bearer ") {
-		return true
-	}
-	if strings.Contains(v, "api_key") || strings.Contains(v, "apikey") {
-		return true
-	}
-	if strings.Contains(v, "token") || strings.Contains(v, "secret") {
-		return true
-	}
-	if strings.Contains(v, "authorization") {
-		return true
-	}
-	return false
-}
