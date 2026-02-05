@@ -84,13 +84,13 @@ type ModelTypeInfo struct {
 var supportedModelTypes = map[string]ModelTypeInfo{
 	"moonshotai/kimi-k2.5": {HasThinking: true},
 	"claude-sonnet-4-5":    {HasThinking: true},
-	"claude-opus-4-5":      {HasThinking: true},
+	"claude-opus-4-6":      {HasThinking: true},
 }
 
 // providerModelTypes maps providers to their supported model types.
 var providerModelTypes = map[string][]string{
 	"openrouter": {"moonshotai/kimi-k2.5"},
-	"anthropic":  {"claude-sonnet-4-5", "claude-opus-4-5"},
+	"anthropic":  {"claude-sonnet-4-5", "claude-opus-4-6"},
 }
 
 // ValidateModelType checks if a model type is supported.

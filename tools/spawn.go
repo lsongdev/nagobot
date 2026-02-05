@@ -29,13 +29,13 @@ func (t *SpawnAgentTool) Def() provider.ToolDef {
 		Type: "function",
 		Function: provider.FunctionDef{
 			Name:        "spawn_agent",
-			Description: "Spawn a subagent to handle a specific task. The agent must be defined in the agents/ directory as a .md file. Use for delegating complex subtasks.",
+			Description: "Spawn a subagent to handle a specific task. Use for delegating complex subtasks.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"agent": map[string]any{
 						"type":        "string",
-						"description": "The agent name (corresponds to a .md file in agents/ directory, e.g., 'researcher' for agents/researcher.md).",
+						"description": "Optional agent name (corresponds to agents/*.md). If not specified, uses a generic subagent.",
 					},
 					"task": map[string]any{
 						"type":        "string",
@@ -50,7 +50,7 @@ func (t *SpawnAgentTool) Def() provider.ToolDef {
 						"description": "If true, wait for the subagent to complete. Defaults to true.",
 					},
 				},
-				"required": []string{"agent", "task"},
+				"required": []string{"task"},
 			},
 		},
 	}

@@ -84,7 +84,23 @@ func (r *AgentRegistry) List() []string {
 func (r *AgentRegistry) BuildPrompt(name string, workspace string, toolNames []string, task string) (string, error) {
 	def, ok := r.Get(name)
 	if !ok {
-		return "", fmt.Errorf("agent not found: %s (available: %v)", name, r.List())
+		// Fallback: minimal prompt when agent definition is missing.
+		return fmt.Sprintf(`You are a subagent working on a task.
+
+## Task
+%s
+
+## Workspace
+%s
+
+## Available Tools
+%s
+
+## Current Time
+%s
+
+Complete the task thoroughly and return a clear, concise result.
+`, task, workspace, strings.Join(toolNames, ", "), time.Now().Format("2006-01-02 15:04 (Monday)")), nil
 	}
 
 	prompt := def.Content

@@ -2,19 +2,19 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
 	"github.com/linanwx/nagobot/logger"
+	openai "github.com/openai/openai-go/v3"
+	oaioption "github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 const (
-	openRouterBaseURL = "https://openrouter.ai/api/v1/chat/completions"
+	openRouterAPIBase = "https://openrouter.ai/api/v1"
 )
 
 // OpenRouterProvider implements the Provider interface for OpenRouter.
@@ -25,7 +25,7 @@ type OpenRouterProvider struct {
 	modelType   string
 	maxTokens   int
 	temperature float64
-	httpClient  *http.Client
+	client      openai.Client
 }
 
 // NewOpenRouterProvider creates a new OpenRouter provider.
@@ -33,90 +33,25 @@ func NewOpenRouterProvider(apiKey, apiBase, modelType, modelName string, maxToke
 	if modelName == "" {
 		modelName = modelType
 	}
+
+	baseURL := normalizeSDKBaseURL(apiBase, openRouterAPIBase, "/chat/completions")
+	client := openai.NewClient(
+		oaioption.WithAPIKey(apiKey),
+		oaioption.WithBaseURL(baseURL),
+		oaioption.WithHeader("HTTP-Referer", "https://github.com/linanwx/nagobot"),
+		oaioption.WithHeader("X-Title", "nagobot"),
+		oaioption.WithMaxRetries(2),
+	)
+
 	return &OpenRouterProvider{
 		apiKey:      apiKey,
-		apiBase:     apiBase,
+		apiBase:     baseURL,
 		modelName:   modelName,
 		modelType:   modelType,
 		maxTokens:   maxTokens,
 		temperature: temperature,
-		httpClient:  &http.Client{},
+		client:      client,
 	}
-}
-
-// openRouterRequest is the request body for OpenRouter API.
-type openRouterRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openRouterMsg `json:"messages"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	Tools       []ToolDef       `json:"tools,omitempty"`
-	ExtraBody   *kimiExtraBody  `json:"extra_body,omitempty"`
-}
-
-// openRouterMsg is a message in OpenRouter format.
-type openRouterMsg struct {
-	Role       string           `json:"role"`
-	Content    string           `json:"content,omitempty"`
-	ToolCalls  []openRouterTool `json:"tool_calls,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
-	Name       string           `json:"name,omitempty"`
-}
-
-// openRouterTool represents a tool call in OpenRouter format.
-type openRouterTool struct {
-	ID       string                 `json:"id"`
-	Type     string                 `json:"type"`
-	Function openRouterToolFunction `json:"function"`
-}
-
-// openRouterToolFunction represents a function call.
-type openRouterToolFunction struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-// kimiExtraBody contains Kimi-specific parameters.
-type kimiExtraBody struct {
-	ChatTemplateKwargs *kimiChatTemplateKwargs `json:"chat_template_kwargs,omitempty"`
-}
-
-// kimiChatTemplateKwargs contains Kimi chat template parameters.
-type kimiChatTemplateKwargs struct {
-	Thinking bool `json:"thinking"`
-}
-
-// openRouterResponse is the response from OpenRouter API.
-type openRouterResponse struct {
-	ID      string `json:"id"`
-	Choices []struct {
-		Index   int `json:"index"`
-		Message struct {
-			Role             string `json:"role"`
-			Content          string `json:"content"`
-			Reasoning        string `json:"reasoning,omitempty"`
-			ReasoningDetails []struct {
-				Type   string `json:"type,omitempty"`
-				Text   string `json:"text,omitempty"`
-				Format string `json:"format,omitempty"`
-				Index  int    `json:"index,omitempty"`
-			} `json:"reasoning_details,omitempty"`
-			ToolCalls []openRouterTool `json:"tool_calls,omitempty"`
-		} `json:"message"`
-		FinishReason string `json:"finish_reason"`
-	} `json:"choices"`
-	Usage struct {
-		PromptTokens            int `json:"prompt_tokens"`
-		CompletionTokens        int `json:"completion_tokens"`
-		TotalTokens             int `json:"total_tokens"`
-		CompletionTokensDetails struct {
-			ReasoningTokens int `json:"reasoning_tokens"`
-		} `json:"completion_tokens_details,omitempty"`
-	} `json:"usage"`
-	Error *struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-	} `json:"error,omitempty"`
 }
 
 func openRouterInputChars(messages []Message) int {
@@ -128,58 +63,99 @@ func openRouterInputChars(messages []Message) int {
 	return total
 }
 
+func toOpenAIChatMessages(messages []Message) ([]openai.ChatCompletionMessageParamUnion, error) {
+	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
+
+	for _, m := range messages {
+		switch m.Role {
+		case "system":
+			result = append(result, openai.SystemMessage(m.Content))
+		case "user":
+			result = append(result, openai.UserMessage(m.Content))
+		case "tool":
+			result = append(result, openai.ToolMessage(m.Content, m.ToolCallID))
+		case "assistant":
+			assistant := openai.ChatCompletionAssistantMessageParam{}
+			if m.Content != "" {
+				assistant.Content.OfString = openai.String(m.Content)
+			}
+
+			if len(m.ToolCalls) > 0 {
+				assistant.ToolCalls = make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(m.ToolCalls))
+				for _, tc := range m.ToolCalls {
+					if tc.Type != "" && tc.Type != "function" {
+						return nil, fmt.Errorf("unsupported assistant tool call type: %s", tc.Type)
+					}
+					assistant.ToolCalls = append(assistant.ToolCalls, openai.ChatCompletionMessageToolCallUnionParam{
+						OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+							ID: tc.ID,
+							Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+								Name:      tc.Function.Name,
+								Arguments: tc.Function.Arguments,
+							},
+						},
+					})
+				}
+			}
+
+			result = append(result, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
+		default:
+			return nil, fmt.Errorf("unsupported message role: %s", m.Role)
+		}
+	}
+
+	return result, nil
+}
+
+func toOpenAIChatTools(tools []ToolDef) []openai.ChatCompletionToolUnionParam {
+	result := make([]openai.ChatCompletionToolUnionParam, 0, len(tools))
+	for _, t := range tools {
+		functionDef := shared.FunctionDefinitionParam{
+			Name:       t.Function.Name,
+			Parameters: shared.FunctionParameters(t.Function.Parameters),
+		}
+		if t.Function.Description != "" {
+			functionDef.Description = openai.String(t.Function.Description)
+		}
+
+		result = append(result, openai.ChatCompletionToolUnionParam{
+			OfFunction: &openai.ChatCompletionFunctionToolParam{Function: functionDef},
+		})
+	}
+	return result
+}
+
+func fromOpenAIChatToolCalls(calls []openai.ChatCompletionMessageToolCallUnion) []ToolCall {
+	result := make([]ToolCall, 0, len(calls))
+	for _, call := range calls {
+		if call.Type != "function" {
+			continue
+		}
+		args := json.RawMessage(call.Function.Arguments)
+		result = append(result, ToolCall{
+			ID:   call.ID,
+			Type: "function",
+			Function: FunctionCall{
+				Name:      call.Function.Name,
+				Arguments: call.Function.Arguments,
+			},
+			Arguments: args,
+		})
+	}
+	return result
+}
+
 // Chat sends a chat completion request to OpenRouter.
 func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response, error) {
 	start := time.Now()
 	inputChars := openRouterInputChars(req.Messages)
 
-	// Convert messages to OpenRouter format
-	msgs := make([]openRouterMsg, 0, len(req.Messages))
-	for _, m := range req.Messages {
-		msg := openRouterMsg{
-			Role:       m.Role,
-			Content:    m.Content,
-			ToolCallID: m.ToolCallID,
-			Name:       m.Name,
-		}
-
-		// Convert tool calls if present
-		if len(m.ToolCalls) > 0 {
-			msg.ToolCalls = make([]openRouterTool, len(m.ToolCalls))
-			for i, tc := range m.ToolCalls {
-				msg.ToolCalls[i] = openRouterTool{
-					ID:   tc.ID,
-					Type: "function",
-					Function: openRouterToolFunction{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-		}
-
-		msgs = append(msgs, msg)
+	messages, err := toOpenAIChatMessages(req.Messages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert messages: %w", err)
 	}
 
-	// Build request body
-	reqBody := openRouterRequest{
-		Model:       p.modelName,
-		Messages:    msgs,
-		MaxTokens:   p.maxTokens,
-		Temperature: p.temperature,
-		Tools:       req.Tools,
-	}
-
-	// Add Kimi-specific thinking mode if this is a Kimi model
-	thinkingEnabled := false
-	if IsKimiModel(p.modelType) {
-		thinkingEnabled = true
-		reqBody.ExtraBody = &kimiExtraBody{
-			ChatTemplateKwargs: &kimiChatTemplateKwargs{
-				Thinking: true,
-			},
-		}
-	}
+	thinkingEnabled := IsKimiModel(p.modelType)
 	logger.Info(
 		"openrouter request",
 		"provider", "openrouter",
@@ -190,83 +166,37 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 		"inputChars", inputChars,
 	)
 
-	// Marshal request
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		logger.Error("openrouter request marshal error", "provider", "openrouter", "err", err)
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	chatReq := openai.ChatCompletionNewParams{
+		Model:    shared.ChatModel(p.modelName),
+		Messages: messages,
+		Tools:    toOpenAIChatTools(req.Tools),
+	}
+	if p.maxTokens > 0 {
+		chatReq.MaxTokens = openai.Int(int64(p.maxTokens))
+	}
+	if p.temperature != 0 {
+		chatReq.Temperature = openai.Float(p.temperature)
 	}
 
-	// Create HTTP request
-	baseURL := p.apiBase
-	if baseURL == "" {
-		baseURL = openRouterBaseURL
-	}
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", baseURL, bytes.NewReader(body))
-	if err != nil {
-		logger.Error("openrouter request create error", "provider", "openrouter", "err", err)
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	requestOpts := []oaioption.RequestOption{}
+	if thinkingEnabled {
+		requestOpts = append(requestOpts, oaioption.WithJSONSet("extra_body.chat_template_kwargs.thinking", true))
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-	httpReq.Header.Set("HTTP-Referer", "https://github.com/linanwx/nagobot")
-	httpReq.Header.Set("X-Title", "nagobot")
-
-	// Send request
-	httpResp, err := p.httpClient.Do(httpReq)
+	chatResp, err := p.client.Chat.Completions.New(ctx, chatReq, requestOpts...)
 	if err != nil {
 		logger.Error("openrouter request send error", "provider", "openrouter", "err", err)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer httpResp.Body.Close()
 
-	// Read response
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		logger.Error("openrouter response read error", "provider", "openrouter", "err", err)
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Parse response
-	var orResp openRouterResponse
-	if err := json.Unmarshal(respBody, &orResp); err != nil {
-		logger.Error("openrouter response parse error", "provider", "openrouter", "err", err)
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// Check for API error
-	if orResp.Error != nil {
-		logger.Error("openrouter api error", "provider", "openrouter", "err", orResp.Error.Message)
-		return nil, fmt.Errorf("API error: %s", orResp.Error.Message)
-	}
-
-	// Check for valid response
-	if len(orResp.Choices) == 0 {
+	if len(chatResp.Choices) == 0 {
 		logger.Error("openrouter no choices", "provider", "openrouter")
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	choice := orResp.Choices[0]
-	reasoningInResponse := choice.Message.Reasoning != "" || len(choice.Message.ReasoningDetails) > 0
-	reasoningTokens := orResp.Usage.CompletionTokensDetails.ReasoningTokens
-
-	// Convert tool calls
-	var toolCalls []ToolCall
-	if len(choice.Message.ToolCalls) > 0 {
-		toolCalls = make([]ToolCall, len(choice.Message.ToolCalls))
-		for i, tc := range choice.Message.ToolCalls {
-			toolCalls[i] = ToolCall{
-				ID:   tc.ID,
-				Type: tc.Type,
-				Function: FunctionCall{
-					Name:      tc.Function.Name,
-					Arguments: tc.Function.Arguments,
-				},
-				Arguments: json.RawMessage(tc.Function.Arguments),
-			}
-		}
-	}
+	choice := chatResp.Choices[0]
+	toolCalls := fromOpenAIChatToolCalls(choice.Message.ToolCalls)
+	reasoningTokens := chatResp.Usage.CompletionTokensDetails.ReasoningTokens
 
 	logger.Info(
 		"openrouter response",
@@ -274,13 +204,13 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 		"modelType", p.modelType,
 		"modelName", p.modelName,
 		"finishReason", choice.FinishReason,
-		"reasoningInResponse", reasoningInResponse,
+		"reasoningInResponse", reasoningTokens > 0,
 		"hasToolCalls", len(toolCalls) > 0,
 		"toolCallCount", len(toolCalls),
-		"promptTokens", orResp.Usage.PromptTokens,
-		"completionTokens", orResp.Usage.CompletionTokens,
+		"promptTokens", chatResp.Usage.PromptTokens,
+		"completionTokens", chatResp.Usage.CompletionTokens,
 		"reasoningTokens", reasoningTokens,
-		"totalTokens", orResp.Usage.TotalTokens,
+		"totalTokens", chatResp.Usage.TotalTokens,
 		"outputChars", len(choice.Message.Content),
 		"latencyMs", time.Since(start).Milliseconds(),
 	)
@@ -289,9 +219,9 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 		Content:   choice.Message.Content,
 		ToolCalls: toolCalls,
 		Usage: Usage{
-			PromptTokens:     orResp.Usage.PromptTokens,
-			CompletionTokens: orResp.Usage.CompletionTokens,
-			TotalTokens:      orResp.Usage.TotalTokens,
+			PromptTokens:     int(chatResp.Usage.PromptTokens),
+			CompletionTokens: int(chatResp.Usage.CompletionTokens),
+			TotalTokens:      int(chatResp.Usage.TotalTokens),
 		},
 	}, nil
 }

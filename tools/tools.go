@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 )
@@ -602,88 +603,74 @@ type searchResult struct {
 
 // parseDuckDuckGoResults extracts results from DuckDuckGo HTML.
 func parseDuckDuckGoResults(html string, maxResults int) []searchResult {
-	var results []searchResult
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return nil
+	}
 
-	// Find result blocks - DuckDuckGo uses class="result__a" for links
-	// and class="result__snippet" for snippets
-	parts := strings.Split(html, `class="result__a"`)
-
-	for i := 1; i < len(parts) && len(results) < maxResults; i++ {
-		part := parts[i]
-
-		// Extract URL
-		urlStart := strings.Index(part, `href="`)
-		if urlStart == -1 {
-			continue
-		}
-		urlStart += 6
-		urlEnd := strings.Index(part[urlStart:], `"`)
-		if urlEnd == -1 {
-			continue
-		}
-		rawURL := part[urlStart : urlStart+urlEnd]
-
-		// DuckDuckGo wraps URLs, extract actual URL
-		if strings.Contains(rawURL, "uddg=") {
-			if decoded, err := url.QueryUnescape(rawURL); err == nil {
-				if idx := strings.Index(decoded, "uddg="); idx != -1 {
-					rawURL = decoded[idx+5:]
-					if ampIdx := strings.Index(rawURL, "&"); ampIdx != -1 {
-						rawURL = rawURL[:ampIdx]
-					}
-				}
-			}
+	results := make([]searchResult, 0, maxResults)
+	doc.Find("div.result").EachWithBreak(func(_ int, sel *goquery.Selection) bool {
+		link := sel.Find("a.result__a").First()
+		if link.Length() == 0 {
+			return true
 		}
 
-		// Extract title
-		titleEnd := strings.Index(part, "</a>")
-		if titleEnd == -1 {
-			continue
+		title := strings.TrimSpace(link.Text())
+		rawURL, ok := link.Attr("href")
+		if !ok {
+			return true
 		}
-		titlePart := part[:titleEnd]
-		// Remove HTML tags from title
-		title := stripHTMLTags(titlePart[urlEnd+1:])
-		title = strings.TrimSpace(title)
+		resolvedURL := normalizeSearchResultURL(rawURL)
+		snippet := strings.TrimSpace(sel.Find(".result__snippet").First().Text())
 
-		// Extract snippet
-		snippet := ""
-		if snippetStart := strings.Index(part, `class="result__snippet"`); snippetStart != -1 {
-			snippetPart := part[snippetStart:]
-			if gtIdx := strings.Index(snippetPart, ">"); gtIdx != -1 {
-				snippetPart = snippetPart[gtIdx+1:]
-				if endIdx := strings.Index(snippetPart, "</"); endIdx != -1 {
-					snippet = stripHTMLTags(snippetPart[:endIdx])
-					snippet = strings.TrimSpace(snippet)
-				}
-			}
-		}
-
-		if title != "" && rawURL != "" {
+		if title != "" && resolvedURL != "" {
 			results = append(results, searchResult{
 				Title:   title,
-				URL:     rawURL,
+				URL:     resolvedURL,
 				Snippet: snippet,
 			})
 		}
+		return len(results) < maxResults
+	})
+
+	// Fallback for layout changes where result wrappers are missing.
+	if len(results) == 0 {
+		doc.Find("a.result__a").EachWithBreak(func(_ int, link *goquery.Selection) bool {
+			title := strings.TrimSpace(link.Text())
+			rawURL, ok := link.Attr("href")
+			if !ok {
+				return true
+			}
+			resolvedURL := normalizeSearchResultURL(rawURL)
+			if title != "" && resolvedURL != "" {
+				results = append(results, searchResult{
+					Title: title,
+					URL:   resolvedURL,
+				})
+			}
+			return len(results) < maxResults
+		})
 	}
 
 	return results
 }
 
-// stripHTMLTags removes HTML tags from a string.
-func stripHTMLTags(s string) string {
-	var result strings.Builder
-	inTag := false
-	for _, r := range s {
-		if r == '<' {
-			inTag = true
-		} else if r == '>' {
-			inTag = false
-		} else if !inTag {
-			result.WriteRune(r)
-		}
+func normalizeSearchResultURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
 	}
-	return result.String()
+	decoded, err := url.QueryUnescape(rawURL)
+	if err != nil {
+		decoded = rawURL
+	}
+	if idx := strings.Index(decoded, "uddg="); idx != -1 {
+		u := decoded[idx+5:]
+		if ampIdx := strings.Index(u, "&"); ampIdx != -1 {
+			u = u[:ampIdx]
+		}
+		return u
+	}
+	return rawURL
 }
 
 // ============================================================================
@@ -784,32 +771,29 @@ func (t *WebFetchTool) Run(ctx context.Context, args json.RawMessage) string {
 
 // extractTextContent extracts readable text from HTML.
 func extractTextContent(html string) string {
-	// Remove script and style blocks
-	for _, tag := range []string{"script", "style", "noscript"} {
-		for {
-			startTag := strings.Index(strings.ToLower(html), "<"+tag)
-			if startTag == -1 {
-				break
-			}
-			endTag := strings.Index(strings.ToLower(html[startTag:]), "</"+tag+">")
-			if endTag == -1 {
-				break
-			}
-			html = html[:startTag] + html[startTag+endTag+len("</"+tag+">"):]
-		}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return strings.TrimSpace(html)
 	}
 
-	// Strip remaining HTML tags
-	text := stripHTMLTags(html)
+	doc.Find("script,style,noscript").Each(func(_ int, s *goquery.Selection) {
+		s.Remove()
+	})
 
-	// Clean up whitespace
+	text := strings.TrimSpace(doc.Find("body").Text())
+	if text == "" {
+		text = strings.TrimSpace(doc.Text())
+	}
+
 	lines := strings.Split(text, "\n")
-	var cleanLines []string
+	cleanLines := make([]string, 0, len(lines))
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line != "" {
-			cleanLines = append(cleanLines, line)
+		if line == "" {
+			continue
 		}
+		line = strings.Join(strings.Fields(line), " ")
+		cleanLines = append(cleanLines, line)
 	}
 
 	return strings.Join(cleanLines, "\n")
