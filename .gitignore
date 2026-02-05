@@ -1,0 +1,11 @@
+.DS_Store
+
+# Go build artifacts
+/nagobot
+/nagobot.exe
+/*.out
+*.test
+
+# Editor/OS
+.idea/
+.vscode/
