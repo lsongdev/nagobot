@@ -13,6 +13,7 @@ type Config struct {
 	Agents    AgentsConfig    `json:"agents"`
 	Providers ProvidersConfig `json:"providers"`
 	Tools     ToolsConfig     `json:"tools,omitempty"`
+	Channels  *ChannelsConfig `json:"channels,omitempty"`
 	Logging   LoggingConfig   `json:"logging,omitempty"`
 }
 
@@ -73,6 +74,17 @@ type SearchConfig struct {
 type ExecToolsConfig struct {
 	Timeout             int  `json:"timeout,omitempty"`             // seconds
 	RestrictToWorkspace bool `json:"restrictToWorkspace,omitempty"` // restrict to workspace
+}
+
+// ChannelsConfig contains channel configurations.
+type ChannelsConfig struct {
+	Telegram *TelegramChannelConfig `json:"telegram,omitempty"`
+}
+
+// TelegramChannelConfig contains Telegram bot configuration.
+type TelegramChannelConfig struct {
+	Token      string  `json:"token"`                // Bot token from BotFather
+	AllowedIDs []int64 `json:"allowedIds,omitempty"` // Allowed user/chat IDs
 }
 
 // DefaultConfig returns a config with sensible defaults.
