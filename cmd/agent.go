@@ -3,11 +3,13 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/linanwx/nagobot/agent"
 	"github.com/linanwx/nagobot/config"
+	"github.com/linanwx/nagobot/provider"
 )
 
 var (
@@ -36,10 +38,18 @@ Examples:
 func init() {
 	rootCmd.AddCommand(agentCmd)
 	agentCmd.Flags().StringVarP(&messageFlag, "message", "m", "", "Message to send (required)")
-	agentCmd.Flags().StringVar(&providerFlag, "provider", "", "Override provider (openrouter, anthropic)")
+	agentCmd.Flags().StringVar(&providerFlag, "provider", "", providerFlagHelp())
 	agentCmd.Flags().StringVar(&modelFlag, "model", "", "Override model type (e.g. claude-sonnet-4-5)")
 	agentCmd.Flags().StringVar(&apiKeyFlag, "api-key", "", "Override API key")
 	agentCmd.Flags().StringVar(&apiBaseFlag, "api-base", "", "Override API base URL")
+}
+
+func providerFlagHelp() string {
+	names := provider.SupportedProviders()
+	if len(names) == 0 {
+		return "Override provider"
+	}
+	return fmt.Sprintf("Override provider (%s)", strings.Join(names, ", "))
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {

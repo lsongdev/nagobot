@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,6 +33,7 @@ type Skill struct {
 // Registry holds loaded skills.
 type Registry struct {
 	skills map[string]*Skill
+	mu     sync.RWMutex
 }
 
 // NewRegistry creates a new skill registry.
@@ -43,17 +45,23 @@ func NewRegistry() *Registry {
 
 // Register adds a skill to the registry.
 func (r *Registry) Register(s *Skill) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.skills[s.Name] = s
 }
 
 // Get returns a skill by name.
 func (r *Registry) Get(name string) (*Skill, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	s, ok := r.skills[name]
 	return s, ok
 }
 
 // List returns all registered skills.
 func (r *Registry) List() []*Skill {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	skills := make([]*Skill, 0, len(r.skills))
 	for _, s := range r.skills {
 		skills = append(skills, s)
@@ -63,6 +71,8 @@ func (r *Registry) List() []*Skill {
 
 // EnabledSkills returns all enabled skills.
 func (r *Registry) EnabledSkills() []*Skill {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var enabled []*Skill
 	for _, s := range r.skills {
 		if s.Enabled {
@@ -74,6 +84,8 @@ func (r *Registry) EnabledSkills() []*Skill {
 
 // Names returns the names of all registered skills.
 func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.skills))
 	for name := range r.skills {
 		names = append(names, name)
@@ -84,14 +96,42 @@ func (r *Registry) Names() []string {
 // LoadFromDirectory loads all skills from a directory.
 // Supports both .yaml/.yml files and .md files with YAML frontmatter.
 func (r *Registry) LoadFromDirectory(dir string) error {
-	entries, err := os.ReadDir(dir)
+	loaded, err := loadSkillsFromDirectory(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // No skills directory is okay
-		}
 		return err
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for name, skill := range loaded {
+		r.skills[name] = skill
+	}
+
+	return nil
+}
+
+// ReloadFromDirectory replaces current skills with the latest files from dir.
+func (r *Registry) ReloadFromDirectory(dir string) error {
+	loaded, err := loadSkillsFromDirectory(dir)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.skills = loaded
+	r.mu.Unlock()
+	return nil
+}
+
+func loadSkillsFromDirectory(dir string) (map[string]*Skill, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]*Skill{}, nil // No skills directory is okay
+		}
+		return nil, err
+	}
+
+	loaded := make(map[string]*Skill)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -113,15 +153,15 @@ func (r *Registry) LoadFromDirectory(dir string) error {
 		}
 
 		if loadErr != nil {
-			return fmt.Errorf("failed to load skill %s: %w", name, loadErr)
+			return nil, fmt.Errorf("failed to load skill %s: %w", name, loadErr)
 		}
 
 		if skill != nil {
-			r.Register(skill)
+			loaded[skill.Name] = skill
 		}
 	}
 
-	return nil
+	return loaded, nil
 }
 
 // loadYAMLSkill loads a skill from a YAML file.
@@ -221,6 +261,8 @@ func (r *Registry) BuildPromptSection() string {
 
 // GetSkillPrompt returns the full prompt for a skill by name.
 func (r *Registry) GetSkillPrompt(name string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	s, ok := r.skills[name]
 	if !ok || !s.Enabled {
 		return "", false
@@ -231,7 +273,9 @@ func (r *Registry) GetSkillPrompt(name string) (string, bool) {
 // CheckRequirements checks whether a skill's prerequisites are met.
 // Returns a list of unmet requirements (empty if all are satisfied).
 func (r *Registry) CheckRequirements(name string) (met bool, missing []string) {
+	r.mu.RLock()
 	s, ok := r.skills[name]
+	r.mu.RUnlock()
 	if !ok {
 		return false, []string{"skill not found"}
 	}
@@ -257,68 +301,4 @@ func (r *Registry) CheckRequirements(name string) (met bool, missing []string) {
 		}
 	}
 	return len(missing) == 0, missing
-}
-
-// ============================================================================
-// Built-in Skills
-// ============================================================================
-
-// RegisterBuiltinSkills registers built-in skills.
-func (r *Registry) RegisterBuiltinSkills() {
-	// Code Review skill
-	r.Register(&Skill{
-		Name:        "code-review",
-		Description: "Perform code reviews with best practices",
-		Prompt: `When reviewing code:
-1. Check for bugs, security issues, and performance problems
-2. Suggest improvements for readability and maintainability
-3. Ensure code follows project conventions
-4. Point out missing error handling or edge cases
-5. Be constructive and explain the reasoning behind suggestions`,
-		Tags:    []string{"development", "review"},
-		Enabled: true,
-	})
-
-	// Git Commit skill
-	r.Register(&Skill{
-		Name:        "git-commit",
-		Description: "Generate meaningful git commit messages",
-		Prompt: `When generating git commit messages:
-1. Use conventional commit format: type(scope): description
-2. Types: feat, fix, docs, style, refactor, test, chore
-3. Keep the first line under 72 characters
-4. Add a body for complex changes explaining why, not what
-5. Reference related issues when applicable`,
-		Tags:    []string{"git", "development"},
-		Enabled: true,
-	})
-
-	// Explain Code skill
-	r.Register(&Skill{
-		Name:        "explain-code",
-		Description: "Explain code in simple terms",
-		Prompt: `When explaining code:
-1. Start with a high-level overview of what the code does
-2. Break down complex logic into digestible steps
-3. Explain the purpose of key variables and functions
-4. Point out any design patterns or idioms used
-5. Mention potential gotchas or important considerations`,
-		Tags:    []string{"learning", "development"},
-		Enabled: true,
-	})
-
-	// Refactor skill
-	r.Register(&Skill{
-		Name:        "refactor",
-		Description: "Suggest code refactoring improvements",
-		Prompt: `When refactoring code:
-1. Identify code smells and anti-patterns
-2. Suggest incremental improvements, not rewrites
-3. Maintain backward compatibility when possible
-4. Improve naming for clarity
-5. Extract repeated logic into reusable functions
-6. Add or improve documentation as needed`,
-		Tags:    []string{"development", "improvement"},
-		Enabled: true,
-	})
 }

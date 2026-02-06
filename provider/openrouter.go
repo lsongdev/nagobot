@@ -3,10 +3,10 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	openai "github.com/openai/openai-go/v3"
 	oaioption "github.com/openai/openai-go/v3/option"
@@ -40,7 +40,7 @@ func NewOpenRouterProvider(apiKey, apiBase, modelType, modelName string, maxToke
 		oaioption.WithBaseURL(baseURL),
 		oaioption.WithHeader("HTTP-Referer", "https://github.com/linanwx/nagobot"),
 		oaioption.WithHeader("X-Title", "nagobot"),
-		oaioption.WithMaxRetries(2),
+		oaioption.WithMaxRetries(runtimecfg.ProviderSDKMaxRetries),
 	)
 
 	return &OpenRouterProvider{
@@ -131,7 +131,6 @@ func fromOpenAIChatToolCalls(calls []openai.ChatCompletionMessageToolCallUnion) 
 		if call.Type != "function" {
 			continue
 		}
-		args := json.RawMessage(call.Function.Arguments)
 		result = append(result, ToolCall{
 			ID:   call.ID,
 			Type: "function",
@@ -139,7 +138,6 @@ func fromOpenAIChatToolCalls(calls []openai.ChatCompletionMessageToolCallUnion) 
 				Name:      call.Function.Name,
 				Arguments: call.Function.Arguments,
 			},
-			Arguments: args,
 		})
 	}
 	return result
@@ -156,7 +154,7 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 	}
 
 	thinkingEnabled := IsKimiModel(p.modelType)
-	logger.Info(
+	logger.Debug(
 		"openrouter request",
 		"provider", "openrouter",
 		"modelType", p.modelType,
@@ -198,7 +196,7 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 	toolCalls := fromOpenAIChatToolCalls(choice.Message.ToolCalls)
 	reasoningTokens := chatResp.Usage.CompletionTokensDetails.ReasoningTokens
 
-	logger.Info(
+	logger.Debug(
 		"openrouter response",
 		"provider", "openrouter",
 		"modelType", p.modelType,

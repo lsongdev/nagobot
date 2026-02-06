@@ -10,6 +10,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	aoption "github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 )
 
@@ -38,7 +39,7 @@ func NewAnthropicProvider(apiKey, apiBase, modelType, modelName string, maxToken
 	client := anthropic.NewClient(
 		aoption.WithAPIKey(apiKey),
 		aoption.WithBaseURL(baseURL),
-		aoption.WithMaxRetries(2),
+		aoption.WithMaxRetries(runtimecfg.ProviderSDKMaxRetries),
 	)
 
 	return &AnthropicProvider{
@@ -193,7 +194,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	inputChars := anthropicInputChars(systemPrompt, req.Messages)
 	tools := toAnthropicTools(req.Tools)
 
-	logger.Info(
+	logger.Debug(
 		"anthropic request",
 		"provider", "anthropic",
 		"modelType", p.modelType,
@@ -205,7 +206,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 
 	maxTokens := p.maxTokens
 	if maxTokens <= 0 {
-		maxTokens = 1024
+		maxTokens = runtimecfg.AnthropicFallbackMaxTokens
 	}
 
 	params := anthropic.MessageNewParams{
@@ -243,13 +244,12 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 					Name:      block.Name,
 					Arguments: string(block.Input),
 				},
-				Arguments: block.Input,
 			})
 		}
 	}
 
 	content := strings.Join(textParts, "\n")
-	logger.Info(
+	logger.Debug(
 		"anthropic response",
 		"provider", "anthropic",
 		"modelType", p.modelType,

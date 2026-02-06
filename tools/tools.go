@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	healthsnap "github.com/linanwx/nagobot/internal/health"
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 )
@@ -90,11 +92,12 @@ func (r *Registry) Names() []string {
 
 // RegisterDefaultTools registers the default file tools.
 func (r *Registry) RegisterDefaultTools(workspace string, cfg DefaultToolsConfig) {
-	r.Register(&ReadFileTool{workspace: workspace})
-	r.Register(&WriteFileTool{workspace: workspace})
-	r.Register(&EditFileTool{workspace: workspace})
-	r.Register(&ListDirTool{workspace: workspace})
+	r.Register(&ReadFileTool{})
+	r.Register(&WriteFileTool{})
+	r.Register(&EditFileTool{})
+	r.Register(&ListDirTool{})
 	r.Register(&ExecTool{workspace: workspace, defaultTimeout: cfg.ExecTimeout, restrictToWorkspace: cfg.RestrictToWorkspace})
+	r.Register(&HealthTool{})
 	r.Register(&WebSearchTool{defaultMaxResults: cfg.WebSearchMaxResults})
 	r.Register(&WebFetchTool{})
 }
@@ -115,9 +118,7 @@ func expandPath(path string) string {
 // ============================================================================
 
 // ReadFileTool reads the contents of a file.
-type ReadFileTool struct {
-	workspace string
-}
+type ReadFileTool struct{}
 
 // Def returns the tool definition.
 func (t *ReadFileTool) Def() provider.ToolDef {
@@ -179,9 +180,7 @@ func (t *ReadFileTool) Run(ctx context.Context, args json.RawMessage) string {
 // ============================================================================
 
 // WriteFileTool writes content to a file.
-type WriteFileTool struct {
-	workspace string
-}
+type WriteFileTool struct{}
 
 // Def returns the tool definition.
 func (t *WriteFileTool) Def() provider.ToolDef {
@@ -242,9 +241,7 @@ func (t *WriteFileTool) Run(ctx context.Context, args json.RawMessage) string {
 // ============================================================================
 
 // EditFileTool edits a file by replacing text.
-type EditFileTool struct {
-	workspace string
-}
+type EditFileTool struct{}
 
 // Def returns the tool definition.
 func (t *EditFileTool) Def() provider.ToolDef {
@@ -327,9 +324,7 @@ func (t *EditFileTool) Run(ctx context.Context, args json.RawMessage) string {
 // ============================================================================
 
 // ListDirTool lists the contents of a directory.
-type ListDirTool struct {
-	workspace string
-}
+type ListDirTool struct{}
 
 // Def returns the tool definition.
 func (t *ListDirTool) Def() provider.ToolDef {
@@ -459,7 +454,7 @@ func (t *ExecTool) Run(ctx context.Context, args json.RawMessage) string {
 		if t.defaultTimeout > 0 {
 			timeout = t.defaultTimeout
 		} else {
-			timeout = 60
+			timeout = runtimecfg.ToolExecDefaultTimeoutSeconds
 		}
 	}
 
@@ -511,12 +506,64 @@ func (t *ExecTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	// Truncate very long output
-	const maxLen = 50000
-	if len(result) > maxLen {
-		result = result[:maxLen] + "\n... (output truncated)"
+	if len(result) > runtimecfg.ToolExecOutputMaxChars {
+		result = result[:runtimecfg.ToolExecOutputMaxChars] + "\n... (output truncated)"
 	}
 
 	return result
+}
+
+// ============================================================================
+// HealthTool
+// ============================================================================
+
+// HealthTool reports runtime health info for the current process.
+type HealthTool struct{}
+
+// Def returns the tool definition.
+func (t *HealthTool) Def() provider.ToolDef {
+	return provider.ToolDef{
+		Type: "function",
+		Function: provider.FunctionDef{
+			Name:        "health",
+			Description: "Get runtime health information (memory, goroutines, runtime metadata) for the current nagobot process.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"format": map[string]any{
+						"type":        "string",
+						"description": "Optional output format: 'json' or 'text'. Defaults to 'json'.",
+						"enum":        []string{"json", "text"},
+					},
+				},
+			},
+		},
+	}
+}
+
+type healthArgs struct {
+	Format string `json:"format,omitempty"`
+}
+
+// Run executes the tool.
+func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
+	var a healthArgs
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &a); err != nil {
+			return fmt.Sprintf("Error: invalid arguments: %v", err)
+		}
+	}
+
+	snapshot := healthsnap.Collect()
+	if strings.EqualFold(a.Format, "text") {
+		return healthsnap.FormatText(snapshot)
+	}
+
+	data, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Error: failed to serialize health snapshot: %v", err)
+	}
+	return string(data)
 }
 
 // ============================================================================
@@ -570,14 +617,14 @@ func (t *WebSearchTool) Run(ctx context.Context, args json.RawMessage) string {
 		if t.defaultMaxResults > 0 {
 			a.MaxResults = t.defaultMaxResults
 		} else {
-			a.MaxResults = 5
+			a.MaxResults = runtimecfg.ToolWebSearchDefaultMaxResults
 		}
 	}
 
 	// Use DuckDuckGo HTML search (no API key required)
 	searchURL := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", url.QueryEscape(a.Query))
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: runtimecfg.ToolWebSearchHTTPTimeout}
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
 		return fmt.Sprintf("Error: failed to create request: %v", err)
@@ -745,7 +792,7 @@ func (t *WebFetchTool) Run(ctx context.Context, args json.RawMessage) string {
 		return "Error: only http and https URLs are supported"
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: runtimecfg.ToolWebFetchHTTPTimeout}
 	req, err := http.NewRequestWithContext(ctx, "GET", a.URL, nil)
 	if err != nil {
 		return fmt.Sprintf("Error: failed to create request: %v", err)
@@ -765,8 +812,7 @@ func (t *WebFetchTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	// Limit read size
-	const maxSize = 500000
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, runtimecfg.ToolWebFetchMaxReadBytes))
 	if err != nil {
 		return fmt.Sprintf("Error: failed to read response: %v", err)
 	}
@@ -779,9 +825,8 @@ func (t *WebFetchTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	// Truncate if still too long
-	const maxLen = 100000
-	if len(content) > maxLen {
-		content = content[:maxLen] + "\n... (content truncated)"
+	if len(content) > runtimecfg.ToolWebFetchMaxContentChars {
+		content = content[:runtimecfg.ToolWebFetchMaxContentChars] + "\n... (content truncated)"
 	}
 
 	return content

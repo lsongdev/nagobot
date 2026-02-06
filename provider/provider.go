@@ -3,8 +3,8 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 )
 
@@ -31,10 +31,9 @@ type Message struct {
 
 // ToolCall represents a tool invocation by the model.
 type ToolCall struct {
-	ID        string          `json:"id"`
-	Type      string          `json:"type"` // "function"
-	Function  FunctionCall    `json:"function"`
-	Arguments json.RawMessage `json:"-"` // parsed from Function.Arguments
+	ID       string       `json:"id"`
+	Type     string       `json:"type"` // "function"
+	Function FunctionCall `json:"function"`
 }
 
 // FunctionCall represents a function call within a tool call.
@@ -75,16 +74,11 @@ type FunctionDef struct {
 	Parameters  map[string]any `json:"parameters"` // JSON Schema
 }
 
-// ModelTypeInfo contains information about a supported model type.
-type ModelTypeInfo struct {
-	HasThinking bool // whether the model supports thinking mode
-}
-
 // supportedModelTypes is the whitelist of supported model types.
-var supportedModelTypes = map[string]ModelTypeInfo{
-	"moonshotai/kimi-k2.5": {HasThinking: true},
-	"claude-sonnet-4-5":    {HasThinking: true},
-	"claude-opus-4-6":      {HasThinking: true},
+var supportedModelTypes = map[string]bool{
+	"moonshotai/kimi-k2.5": true,
+	"claude-sonnet-4-5":    true,
+	"claude-opus-4-6":      true,
 }
 
 // providerModelTypes maps providers to their supported model types.
@@ -93,23 +87,36 @@ var providerModelTypes = map[string][]string{
 	"anthropic":  {"claude-sonnet-4-5", "claude-opus-4-6"},
 }
 
-// ValidateModelType checks if a model type is supported.
-func ValidateModelType(modelType string) error {
-	if _, ok := supportedModelTypes[modelType]; !ok {
-		return errors.New("unsupported model type: " + modelType)
+// SupportedProviders returns all supported provider names in sorted order.
+func SupportedProviders() []string {
+	names := make([]string, 0, len(providerModelTypes))
+	for name := range providerModelTypes {
+		names = append(names, name)
 	}
-	return nil
+	sort.Strings(names)
+	return names
+}
+
+// SupportedModelsForProvider returns supported model types for the given provider.
+func SupportedModelsForProvider(providerName string) []string {
+	models, ok := providerModelTypes[providerName]
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(models))
+	copy(out, models)
+	return out
 }
 
 // ValidateProviderModelType checks if a model type is valid for a provider.
-func ValidateProviderModelType(provider, modelType string) error {
-	if err := ValidateModelType(modelType); err != nil {
-		return err
+func ValidateProviderModelType(providerName, modelType string) error {
+	if !supportedModelTypes[modelType] {
+		return errors.New("unsupported model type: " + modelType)
 	}
 
-	allowed, ok := providerModelTypes[provider]
+	allowed, ok := providerModelTypes[providerName]
 	if !ok {
-		return errors.New("unknown provider: " + provider)
+		return errors.New("unknown provider: " + providerName)
 	}
 
 	for _, m := range allowed {
@@ -118,23 +125,12 @@ func ValidateProviderModelType(provider, modelType string) error {
 		}
 	}
 
-	return errors.New("model type " + modelType + " is not supported by provider " + provider)
-}
-
-// GetModelTypeInfo returns info about a model type.
-func GetModelTypeInfo(modelType string) (ModelTypeInfo, bool) {
-	info, ok := supportedModelTypes[modelType]
-	return info, ok
+	return errors.New("model type " + modelType + " is not supported by provider " + providerName)
 }
 
 // IsKimiModel returns true if the model type is a Kimi model.
 func IsKimiModel(modelType string) bool {
 	return strings.Contains(modelType, "kimi")
-}
-
-// IsClaudeModel returns true if the model type is a Claude model.
-func IsClaudeModel(modelType string) bool {
-	return strings.Contains(modelType, "claude")
 }
 
 // UserMessage creates a user message.

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 )
 
 // Config is the root configuration structure.
@@ -95,9 +97,9 @@ func DefaultConfig() *Config {
 			Defaults: AgentDefaults{
 				Provider:          "openrouter",
 				ModelType:         "moonshotai/kimi-k2.5",
-				MaxTokens:         8192,
-				Temperature:       0.95,
-				MaxToolIterations: 20,
+				MaxTokens:         runtimecfg.AgentDefaultMaxTokens,
+				Temperature:       runtimecfg.AgentDefaultTemperature,
+				MaxToolIterations: runtimecfg.AgentDefaultMaxToolIterations,
 			},
 		},
 		Logging: logDefaults,

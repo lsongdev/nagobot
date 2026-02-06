@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 )
 
@@ -18,6 +19,8 @@ const (
 	SubagentStatusCompleted SubagentStatus = "completed"
 	SubagentStatusFailed    SubagentStatus = "failed"
 )
+
+const completedTaskRetention = 30 * time.Minute
 
 // SubagentOrigin tracks where the spawning request came from,
 // so async results can be pushed back to the correct channel/chat.
@@ -50,24 +53,25 @@ type SubagentRunner func(ctx context.Context, task *SubagentTask) (string, error
 // SubagentManager manages subagent lifecycle.
 type SubagentManager struct {
 	mu            sync.RWMutex
-	bus           *Bus
 	tasks         map[string]*SubagentTask
-	runner        SubagentRunner // Single runner for all subagents
+	runner        SubagentRunner
+	onComplete    func(*SubagentTask) // Called when a task completes or fails
 	counter       int64
 	maxConcurrent int
 	semaphore     chan struct{}
 }
 
 // NewSubagentManager creates a new subagent manager.
-func NewSubagentManager(bus *Bus, maxConcurrent int, runner SubagentRunner) *SubagentManager {
+// onComplete is called (in a goroutine) when a task finishes — may be nil.
+func NewSubagentManager(maxConcurrent int, runner SubagentRunner, onComplete func(*SubagentTask)) *SubagentManager {
 	if maxConcurrent <= 0 {
-		maxConcurrent = 5
+		maxConcurrent = runtimecfg.SubagentDefaultMaxConcurrent
 	}
 
 	return &SubagentManager{
-		bus:           bus,
 		tasks:         make(map[string]*SubagentTask),
 		runner:        runner,
+		onComplete:    onComplete,
 		maxConcurrent: maxConcurrent,
 		semaphore:     make(chan struct{}, maxConcurrent),
 	}
@@ -79,7 +83,6 @@ func (m *SubagentManager) SpawnWithOrigin(ctx context.Context, parentID, task, t
 }
 
 // Spawn creates and starts a new subagent task.
-// agentName is the name of the agent definition (from agents/*.md).
 func (m *SubagentManager) Spawn(ctx context.Context, parentID, task, taskContext, agentName string) (string, error) {
 	return m.spawnInternal(ctx, parentID, task, taskContext, agentName, SubagentOrigin{})
 }
@@ -87,13 +90,11 @@ func (m *SubagentManager) Spawn(ctx context.Context, parentID, task, taskContext
 func (m *SubagentManager) spawnInternal(ctx context.Context, parentID, task, taskContext, agentName string, origin SubagentOrigin) (string, error) {
 	m.mu.Lock()
 
-	// Check if runner is configured
 	if m.runner == nil {
 		m.mu.Unlock()
 		return "", fmt.Errorf("subagent runner not configured")
 	}
 
-	// Create task
 	m.counter++
 	idPart := "task"
 	if agentName != "" {
@@ -104,11 +105,11 @@ func (m *SubagentManager) spawnInternal(ctx context.Context, parentID, task, tas
 	subTask := &SubagentTask{
 		ID:        taskID,
 		ParentID:  parentID,
-		Type:      agentName, // Agent name from agents/ directory
+		Type:      agentName,
 		Task:      task,
 		Context:   taskContext,
 		Origin:    origin,
-		Timeout:   5 * time.Minute, // Default timeout
+		Timeout:   runtimecfg.SubagentDefaultTimeout,
 		CreatedAt: time.Now(),
 		Status:    SubagentStatusPending,
 	}
@@ -116,7 +117,6 @@ func (m *SubagentManager) spawnInternal(ctx context.Context, parentID, task, tas
 	m.tasks[taskID] = subTask
 	m.mu.Unlock()
 
-	// Run in background
 	go m.runTask(ctx, subTask, m.runner)
 
 	logger.Info("subagent spawned", "id", taskID, "agent", agentName, "parent", parentID)
@@ -129,13 +129,12 @@ func (m *SubagentManager) SpawnSync(ctx context.Context, parentID, task, taskCon
 	if err != nil {
 		return "", err
 	}
-
 	return m.Wait(ctx, taskID)
 }
 
 // Wait waits for a task to complete and returns the result.
 func (m *SubagentManager) Wait(ctx context.Context, taskID string) (string, error) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(runtimecfg.SubagentWaitPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -176,7 +175,7 @@ func (m *SubagentManager) runTask(ctx context.Context, task *SubagentTask, runne
 	case m.semaphore <- struct{}{}:
 		defer func() { <-m.semaphore }()
 	case <-ctx.Done():
-		m.setTaskFailed(task, ctx.Err().Error())
+		m.finishTask(task, "", ctx.Err().Error())
 		return
 	}
 
@@ -197,13 +196,21 @@ func (m *SubagentManager) runTask(ctx context.Context, task *SubagentTask, runne
 	// Run the task
 	result, err := runner(runCtx, task)
 
-	// Update task status
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+	m.finishTask(task, result, errMsg)
+}
+
+// finishTask marks a task as completed or failed and fires the onComplete callback.
+func (m *SubagentManager) finishTask(task *SubagentTask, result, errMsg string) {
 	m.mu.Lock()
 	task.CompletedAt = time.Now()
-	if err != nil {
+	if errMsg != "" {
 		task.Status = SubagentStatusFailed
-		task.Error = err.Error()
-		logger.Error("subagent failed", "id", task.ID, "err", err)
+		task.Error = errMsg
+		logger.Error("subagent failed", "id", task.ID, "err", errMsg)
 	} else {
 		task.Status = SubagentStatusCompleted
 		task.Result = result
@@ -211,47 +218,17 @@ func (m *SubagentManager) runTask(ctx context.Context, task *SubagentTask, runne
 	}
 	m.mu.Unlock()
 
-	// Publish completion event (including full origin for push delivery + session routing)
-	if m.bus != nil {
-		if err != nil {
-			event, _ := NewEvent(EventSubagentError, task.ParentID, SubagentEventData{
-				AgentID:          task.ID,
-				Error:            err.Error(),
-				OriginChannel:    task.Origin.Channel,
-				OriginReplyTo:    task.Origin.ReplyTo,
-				OriginSessionKey: task.Origin.SessionKey,
-			})
-			m.bus.Publish(event)
-		} else {
-			event, _ := NewEvent(EventSubagentCompleted, task.ParentID, SubagentEventData{
-				AgentID:          task.ID,
-				Result:           result,
-				OriginChannel:    task.Origin.Channel,
-				OriginReplyTo:    task.Origin.ReplyTo,
-				OriginSessionKey: task.Origin.SessionKey,
-			})
-			m.bus.Publish(event)
-		}
+	// Retain completed task status for a while so check_agent can still read it,
+	// then release memory.
+	taskID := task.ID
+	go func() {
+		time.Sleep(completedTaskRetention)
+		m.mu.Lock()
+		delete(m.tasks, taskID)
+		m.mu.Unlock()
+	}()
+
+	if m.onComplete != nil {
+		go m.onComplete(task)
 	}
 }
-
-// setTaskFailed marks a task as failed.
-func (m *SubagentManager) setTaskFailed(task *SubagentTask, errMsg string) {
-	m.mu.Lock()
-	task.Status = SubagentStatusFailed
-	task.Error = errMsg
-	task.CompletedAt = time.Now()
-	m.mu.Unlock()
-
-	if m.bus != nil {
-		event, _ := NewEvent(EventSubagentError, task.ParentID, SubagentEventData{
-			AgentID:          task.ID,
-			Error:            errMsg,
-			OriginChannel:    task.Origin.Channel,
-			OriginReplyTo:    task.Origin.ReplyTo,
-			OriginSessionKey: task.Origin.SessionKey,
-		})
-		m.bus.Publish(event)
-	}
-}
-

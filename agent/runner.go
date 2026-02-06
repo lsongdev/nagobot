@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 	"github.com/linanwx/nagobot/tools"
@@ -22,7 +24,7 @@ type Runner struct {
 // NewRunner creates a new Runner.
 func NewRunner(p provider.Provider, t *tools.Registry, maxIter int) *Runner {
 	if maxIter <= 0 {
-		maxIter = 20
+		maxIter = runtimecfg.AgentDefaultMaxToolIterations
 	}
 	return &Runner{
 		provider: p,
@@ -62,7 +64,7 @@ func (r *Runner) RunWithMessages(ctx context.Context, messages []provider.Messag
 		messages = append(messages, provider.AssistantMessageWithTools(resp.Content, resp.ToolCalls))
 
 		for _, tc := range resp.ToolCalls {
-			result := r.tools.Run(ctx, tc.Function.Name, tc.Arguments)
+			result := r.tools.Run(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
 			if strings.HasPrefix(result, "Error:") {
 				logger.Error("tool error", "tool", tc.Function.Name, "err", result)
 			}

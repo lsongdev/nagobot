@@ -52,20 +52,7 @@ func NewService(configPath string) (*Service, error) {
 }
 
 func (s *Service) load() ([]Job, error) {
-	data, err := os.ReadFile(s.configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-
-	return cfg.Jobs, nil
+	return LoadConfig(s.configPath)
 }
 
 // LoadConfig reads jobs from a cron config file.

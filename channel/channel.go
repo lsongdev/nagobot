@@ -4,6 +4,7 @@ package channel
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // Message represents an incoming message from a channel.
@@ -101,13 +102,20 @@ func (m *Manager) SendTo(ctx context.Context, channelName, text, replyTo string)
 
 // StartAll starts all registered channels.
 func (m *Manager) StartAll(ctx context.Context) error {
-	for _, ch := range m.channels {
-		if err := ch.Start(ctx); err != nil {
+	telegramCh, hasTelegram := m.channels["telegram"]
+	if hasTelegram {
+		if err := m.startChannel(ctx, telegramCh); err != nil {
 			return err
 		}
+	}
 
-		// Start message processing goroutine for this channel
-		go m.processMessages(ctx, ch)
+	if cliCh, ok := m.channels["cli"]; ok {
+		if hasTelegram {
+			time.Sleep(1 * time.Second)
+		}
+		if err := m.startChannel(ctx, cliCh); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -143,4 +151,14 @@ func (m *Manager) processMessages(ctx context.Context, ch Channel) {
 			}
 		}
 	}
+}
+
+func (m *Manager) startChannel(ctx context.Context, ch Channel) error {
+	if err := ch.Start(ctx); err != nil {
+		return err
+	}
+
+	// Start message processing goroutine for this channel
+	go m.processMessages(ctx, ch)
+	return nil
 }

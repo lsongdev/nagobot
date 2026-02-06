@@ -14,6 +14,7 @@ import (
 
 	"github.com/linanwx/nagobot/bus"
 	"github.com/linanwx/nagobot/config"
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 	"github.com/linanwx/nagobot/skills"
@@ -35,13 +36,13 @@ type Agent struct {
 	tools         *tools.Registry
 	skills        *skills.Registry
 	agents        *AgentRegistry // Agent definitions from agents/ directory
-	bus           *bus.Bus
 	subagents     *bus.SubagentManager
 	workspace     string
 	maxIterations int
 	runner        *Runner // Reusable runner for agent loop
 	toolsDefaults tools.DefaultToolsConfig
 	sessions      *SessionManager
+	memory        *memoryStore
 
 	// pendingResults keyed by session key to prevent cross-session leakage.
 	// Empty key "" is used for stateless/CLI mode.
@@ -80,11 +81,11 @@ func NewAgent(cfg *config.Config) (*Agent, error) {
 	modelName := cfg.GetModelName()
 	maxTokens := cfg.Agents.Defaults.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 8192
+		maxTokens = runtimecfg.AgentDefaultMaxTokens
 	}
 	temp := cfg.Agents.Defaults.Temperature
 	if temp == 0 {
-		temp = 0.95
+		temp = runtimecfg.AgentDefaultTemperature
 	}
 
 	switch cfg.Agents.Defaults.Provider {
@@ -99,9 +100,6 @@ func NewAgent(cfg *config.Config) (*Agent, error) {
 	// Generate agent ID
 	agentID := fmt.Sprintf("agent-%d", time.Now().UnixNano())
 
-	// Create event bus
-	eventBus := bus.NewBus(100)
-
 	// Create tool registry
 	toolRegistry := tools.NewRegistry()
 	toolsDefaults := tools.DefaultToolsConfig{
@@ -113,9 +111,11 @@ func NewAgent(cfg *config.Config) (*Agent, error) {
 
 	// Create skill registry
 	skillRegistry := skills.NewRegistry()
-	skillRegistry.RegisterBuiltinSkills()
+	if err := ensureDefaultMemorySkill(workspace); err != nil {
+		logger.Warn("failed to ensure default memory skill", "err", err)
+	}
 	// Load custom skills from workspace
-	skillsDir := filepath.Join(workspace, "skills")
+	skillsDir := filepath.Join(workspace, runtimecfg.WorkspaceSkillsDirName)
 	if err := skillRegistry.LoadFromDirectory(skillsDir); err != nil {
 		logger.Warn("failed to load skills", "dir", skillsDir, "err", err)
 	}
@@ -125,7 +125,7 @@ func NewAgent(cfg *config.Config) (*Agent, error) {
 
 	maxIter := cfg.Agents.Defaults.MaxToolIterations
 	if maxIter == 0 {
-		maxIter = 20
+		maxIter = runtimecfg.AgentDefaultMaxToolIterations
 	}
 
 	// Create the runner (used by both main agent and subagents)
@@ -145,56 +145,44 @@ func NewAgent(cfg *config.Config) (*Agent, error) {
 		tools:          toolRegistry,
 		skills:         skillRegistry,
 		agents:         agentRegistry,
-		bus:            eventBus,
 		workspace:      workspace,
 		maxIterations:  maxIter,
 		runner:         runner,
 		toolsDefaults:  toolsDefaults,
 		sessions:       sessions,
+		memory:         newMemoryStore(workspace),
 		pendingResults: make(map[string][]pendingSubagentResult),
 	}
 
-	// Subscribe to subagent completion/error events.
-	// If origin routing is available and sender is configured, push directly.
-	// Otherwise, queue for injection into the next turn.
-	handleSubagentResult := func(_ context.Context, event *bus.Event) {
-		var data bus.SubagentEventData
-		if err := event.ParseData(&data); err != nil {
-			return
-		}
-
-		// Format the result message
+	// Create subagent manager with a completion callback.
+	// Push to channel if possible, otherwise queue for next turn.
+	subagentMgr := bus.NewSubagentManager(5, agent.createSubagentRunner(), func(task *bus.SubagentTask) {
 		var text string
-		if data.Error != "" {
-			text = fmt.Sprintf("[Subagent %s failed]: %s", data.AgentID, data.Error)
+		if task.Error != "" {
+			text = fmt.Sprintf("[Subagent %s failed]: %s", task.ID, task.Error)
 		} else {
-			text = fmt.Sprintf("[Subagent %s completed]:\n%s", data.AgentID, data.Result)
+			text = fmt.Sprintf("[Subagent %s completed]:\n%s", task.ID, task.Result)
 		}
 
 		// Attempt push delivery if origin and sender are available
-		if data.OriginChannel != "" && data.OriginReplyTo != "" && agent.channelSender != nil {
-			if err := agent.channelSender.SendTo(context.Background(), data.OriginChannel, text, data.OriginReplyTo); err != nil {
-				logger.Warn("subagent push delivery failed, queuing for next turn", "err", err)
+		o := task.Origin
+		if o.Channel != "" && o.ReplyTo != "" && agent.channelSender != nil {
+			if err := agent.channelSender.SendTo(context.Background(), o.Channel, text, o.ReplyTo); err != nil {
+				logger.Warn("subagent push delivery failed, queuing", "err", err)
 			} else {
-				return // Push succeeded, no need to queue
+				return
 			}
 		}
 
-		// Fallback: queue for injection into next user message, keyed by session
-		sessionKey := data.OriginSessionKey // Empty string for stateless/CLI
+		// Fallback: queue for next user message in this session
 		agent.pendingResultsMu.Lock()
-		agent.pendingResults[sessionKey] = append(agent.pendingResults[sessionKey], pendingSubagentResult{
-			TaskID: data.AgentID,
-			Result: data.Result,
-			Error:  data.Error,
+		agent.pendingResults[o.SessionKey] = append(agent.pendingResults[o.SessionKey], pendingSubagentResult{
+			TaskID: task.ID,
+			Result: task.Result,
+			Error:  task.Error,
 		})
 		agent.pendingResultsMu.Unlock()
-	}
-	eventBus.Subscribe(bus.EventSubagentCompleted, handleSubagentResult)
-	eventBus.Subscribe(bus.EventSubagentError, handleSubagentResult)
-
-	// Create subagent manager with a runner that creates real subagent execution
-	subagentMgr := bus.NewSubagentManager(eventBus, 5, agent.createSubagentRunner())
+	})
 	agent.subagents = subagentMgr
 
 	// Register subagent tools (now that subagentMgr is ready)
@@ -216,9 +204,6 @@ func (a *Agent) SetChannelSender(sender tools.ChannelSender) {
 
 // Close cleans up agent resources.
 func (a *Agent) Close() {
-	if a.bus != nil {
-		a.bus.Close()
-	}
 }
 
 // ID returns the agent's ID.
@@ -302,19 +287,29 @@ func (a *Agent) Run(ctx context.Context, userMessage string) (string, error) {
 // RunInSession processes a user message within a named session, replaying history.
 // Falls back to stateless Run() if session manager is unavailable.
 func (a *Agent) RunInSession(ctx context.Context, sessionKey string, userMessage string) (string, error) {
+	originalUserMessage := userMessage
+
 	// Prepend any pending subagent results for this specific session
 	if prefix := a.drainPendingResults(sessionKey); prefix != "" {
 		userMessage = prefix + "---\nUser message: " + userMessage
 	}
 
 	if a.sessions == nil {
-		return a.Run(ctx, userMessage)
+		response, err := a.Run(ctx, userMessage)
+		if err == nil {
+			a.recordMemoryTurn(sessionKey, originalUserMessage, response)
+		}
+		return response, err
 	}
 
 	session, err := a.sessions.Get(sessionKey)
 	if err != nil {
 		logger.Warn("failed to load session, falling back to stateless", "key", sessionKey, "err", err)
-		return a.Run(ctx, userMessage)
+		response, runErr := a.Run(ctx, userMessage)
+		if runErr == nil {
+			a.recordMemoryTurn(sessionKey, originalUserMessage, response)
+		}
+		return response, runErr
 	}
 
 	// Build messages: system prompt + session history + new user message
@@ -333,8 +328,8 @@ func (a *Agent) RunInSession(ctx context.Context, sessionKey string, userMessage
 	session.Messages = append(session.Messages, provider.UserMessage(userMessage))
 	session.Messages = append(session.Messages, provider.AssistantMessage(response))
 
-	// Cap history to prevent token overflow (keep last 40 messages = 20 exchanges)
-	const maxSessionMessages = 40
+	// Cap history to prevent token overflow.
+	const maxSessionMessages = runtimecfg.AgentSessionMaxMessages
 	if len(session.Messages) > maxSessionMessages {
 		session.Messages = session.Messages[len(session.Messages)-maxSessionMessages:]
 	}
@@ -342,6 +337,7 @@ func (a *Agent) RunInSession(ctx context.Context, sessionKey string, userMessage
 	if saveErr := a.sessions.Save(session); saveErr != nil {
 		logger.Warn("failed to save session", "key", sessionKey, "err", saveErr)
 	}
+	a.recordMemoryTurn(sessionKey, originalUserMessage, response)
 
 	return response, nil
 }
@@ -379,21 +375,34 @@ Available Tools: %s
 	prompt = strings.ReplaceAll(prompt, "{{AGENTS}}", strings.TrimSpace(string(agentsContent)))
 
 	// Skills section
+	skillsDir := filepath.Join(a.workspace, runtimecfg.WorkspaceSkillsDirName)
+	if err := a.skills.ReloadFromDirectory(skillsDir); err != nil {
+		logger.Warn("failed to reload skills", "dir", skillsDir, "err", err)
+	}
 	skillsPrompt := a.skills.BuildPromptSection()
 	prompt = strings.ReplaceAll(prompt, "{{SKILLS}}", skillsPrompt)
 
 	// Memory (optional)
-	memoryPath := filepath.Join(a.workspace, "memory", "MEMORY.md")
+	memoryPath := filepath.Join(a.workspace, runtimecfg.WorkspaceMemoryDirName, runtimecfg.MemoryGlobalSummaryFileName)
 	memoryContent, _ := os.ReadFile(memoryPath)
 	prompt = strings.ReplaceAll(prompt, "{{MEMORY}}", strings.TrimSpace(string(memoryContent)))
 
 	// Today's notes (optional)
 	todayFile := time.Now().Format("2006-01-02") + ".md"
-	todayPath := filepath.Join(a.workspace, "memory", todayFile)
+	todayPath := filepath.Join(a.workspace, runtimecfg.WorkspaceMemoryDirName, todayFile)
 	todayContent, _ := os.ReadFile(todayPath)
 	prompt = strings.ReplaceAll(prompt, "{{TODAY}}", strings.TrimSpace(string(todayContent)))
 
 	return prompt
+}
+
+func (a *Agent) recordMemoryTurn(sessionKey, userMessage, response string) {
+	if a.memory == nil {
+		return
+	}
+	if err := a.memory.RecordTurn(sessionKey, userMessage, response); err != nil {
+		logger.Warn("failed to update memory", "session", sessionKey, "err", err)
+	}
 }
 
 // ============================================================================
@@ -412,6 +421,7 @@ type Session struct {
 type SessionManager struct {
 	sessionsDir string
 	cache       map[string]*Session
+	mu          sync.RWMutex
 }
 
 // NewSessionManager creates a new session manager.
@@ -429,9 +439,12 @@ func NewSessionManager(configDir string) (*SessionManager, error) {
 // Get returns a session by key, creating one if it doesn't exist.
 func (m *SessionManager) Get(key string) (*Session, error) {
 	// Check cache
+	m.mu.RLock()
 	if s, ok := m.cache[key]; ok {
+		m.mu.RUnlock()
 		return s, nil
 	}
+	m.mu.RUnlock()
 
 	// Try to load from disk
 	path := m.sessionPath(key)
@@ -439,7 +452,14 @@ func (m *SessionManager) Get(key string) (*Session, error) {
 	if err == nil {
 		var s Session
 		if err := json.Unmarshal(data, &s); err == nil {
+			m.mu.Lock()
+			// Another goroutine may have populated the cache while we were reading.
+			if cached, ok := m.cache[key]; ok {
+				m.mu.Unlock()
+				return cached, nil
+			}
 			m.cache[key] = &s
+			m.mu.Unlock()
 			return &s, nil
 		}
 	}
@@ -451,7 +471,13 @@ func (m *SessionManager) Get(key string) (*Session, error) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+	m.mu.Lock()
+	if cached, ok := m.cache[key]; ok {
+		m.mu.Unlock()
+		return cached, nil
+	}
 	m.cache[key] = s
+	m.mu.Unlock()
 	return s, nil
 }
 
@@ -471,72 +497,4 @@ func (m *SessionManager) sessionPath(key string) string {
 	safe := strings.ReplaceAll(key, "/", "_")
 	safe = strings.ReplaceAll(safe, ":", "_")
 	return filepath.Join(m.sessionsDir, safe+".json")
-}
-
-// ============================================================================
-// Memory management
-// ============================================================================
-
-// Memory manages long-term and daily memory.
-type Memory struct {
-	memoryDir string
-}
-
-// NewMemory creates a new memory manager.
-func NewMemory(workspace string) (*Memory, error) {
-	memoryDir := filepath.Join(workspace, "memory")
-	if err := os.MkdirAll(memoryDir, 0755); err != nil {
-		return nil, err
-	}
-	return &Memory{memoryDir: memoryDir}, nil
-}
-
-// ReadLongTerm reads the long-term memory.
-func (m *Memory) ReadLongTerm() (string, error) {
-	path := filepath.Join(m.memoryDir, "MEMORY.md")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	return string(content), nil
-}
-
-// WriteLongTerm writes to the long-term memory.
-func (m *Memory) WriteLongTerm(content string) error {
-	path := filepath.Join(m.memoryDir, "MEMORY.md")
-	return os.WriteFile(path, []byte(content), 0644)
-}
-
-// ReadToday reads today's notes.
-func (m *Memory) ReadToday() (string, error) {
-	path := filepath.Join(m.memoryDir, time.Now().Format("2006-01-02")+".md")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	return string(content), nil
-}
-
-// AppendToday appends to today's notes.
-func (m *Memory) AppendToday(content string) error {
-	path := filepath.Join(m.memoryDir, time.Now().Format("2006-01-02")+".md")
-
-	// Read existing content
-	existing, _ := os.ReadFile(path)
-
-	// If file doesn't exist, add header
-	if len(existing) == 0 {
-		header := fmt.Sprintf("# %s\n\n", time.Now().Format("2006-01-02"))
-		existing = []byte(header)
-	}
-
-	// Append new content
-	newContent := string(existing) + content + "\n"
-	return os.WriteFile(path, []byte(newContent), 0644)
 }

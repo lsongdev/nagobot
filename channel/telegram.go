@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 )
 
@@ -39,7 +40,7 @@ func NewTelegramChannel(cfg TelegramConfig) *TelegramChannel {
 	return &TelegramChannel{
 		token:      cfg.Token,
 		allowedIDs: allowedIDs,
-		messages:   make(chan *Message, 100),
+		messages:   make(chan *Message, runtimecfg.TelegramChannelMessageBufferSize),
 		done:       make(chan struct{}),
 	}
 }
@@ -66,7 +67,7 @@ func (t *TelegramChannel) Start(ctx context.Context) error {
 	logger.Info("telegram channel started")
 
 	u := tgbotapi.NewUpdate(t.offset)
-	u.Timeout = 30
+	u.Timeout = runtimecfg.TelegramUpdateTimeoutSeconds
 	updates := bot.GetUpdatesChan(u)
 
 	t.wg.Add(1)
@@ -99,8 +100,7 @@ func (t *TelegramChannel) Send(ctx context.Context, resp *Response) error {
 	}
 
 	// Split long messages
-	const maxLen = 4096
-	messages := splitMessage(resp.Text, maxLen)
+	messages := splitMessage(resp.Text, runtimecfg.TelegramMaxMessageLength)
 
 	for _, chunk := range messages {
 		msg := tgbotapi.NewMessage(chatID, chunk)

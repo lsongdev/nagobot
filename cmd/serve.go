@@ -14,6 +14,7 @@ import (
 	"github.com/linanwx/nagobot/channel"
 	"github.com/linanwx/nagobot/config"
 	"github.com/linanwx/nagobot/cron"
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/spf13/cobra"
 )
@@ -63,7 +64,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create message handler
 	handler := func(ctx context.Context, msg *channel.Message) (*channel.Response, error) {
-		logger.Info("received message",
+		logger.Debug("received message",
 			"channel", msg.ChannelID,
 			"user", msg.Username,
 			"text", truncate(msg.Text, 50),
@@ -213,7 +214,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// This eliminates the race window between read and rename.
 	heartbeatPath := filepath.Join(workspace, "HEARTBEAT.md")
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(runtimecfg.ServeHeartbeatTickInterval)
 		defer ticker.Stop()
 		for {
 			select {

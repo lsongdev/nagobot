@@ -7,17 +7,22 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 )
 
 // CLIChannel implements the Channel interface for interactive CLI.
 type CLIChannel struct {
-	prompt   string
-	messages chan *Message
-	done     chan struct{}
-	wg       sync.WaitGroup
-	msgID    int64
+	prompt       string
+	messages     chan *Message
+	done         chan struct{}
+	responseDone chan struct{}
+	wg           sync.WaitGroup
+	msgID        int64
+	mu           sync.Mutex
+	waitingResp  bool
 }
 
 // CLIConfig holds CLI channel configuration.
@@ -33,9 +38,10 @@ func NewCLIChannel(cfg CLIConfig) *CLIChannel {
 	}
 
 	return &CLIChannel{
-		prompt:   prompt,
-		messages: make(chan *Message, 10),
-		done:     make(chan struct{}),
+		prompt:       prompt,
+		messages:     make(chan *Message, runtimecfg.CLIChannelMessageBufferSize),
+		done:         make(chan struct{}),
+		responseDone: make(chan struct{}, 1),
 	}
 }
 
@@ -56,17 +62,47 @@ func (c *CLIChannel) Start(ctx context.Context) error {
 
 // Stop gracefully shuts down the channel.
 func (c *CLIChannel) Stop() error {
-	close(c.done)
-	c.wg.Wait()
-	close(c.messages)
+	select {
+	case <-c.done:
+	default:
+		close(c.done)
+	}
+
+	waitDone := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		close(c.messages)
+	case <-time.After(runtimecfg.CLIChannelStopWaitTimeout):
+		// stdin reads can block indefinitely on some terminals; don't block process shutdown.
+		logger.Warn("cli channel stop timed out waiting for input loop")
+	}
+
 	logger.Info("cli channel stopped")
 	return nil
 }
 
 // Send prints a response to stdout.
 func (c *CLIChannel) Send(ctx context.Context, resp *Response) error {
+	// Keep output visually separate from any already-printed prompt.
+	fmt.Println()
 	fmt.Println(resp.Text)
 	fmt.Println() // Empty line after response
+
+	if c.completeWaitingResponse() {
+		select {
+		case c.responseDone <- struct{}{}:
+		default:
+		}
+	} else {
+		// Preserve a visible prompt for out-of-band notifications.
+		fmt.Print(c.prompt)
+	}
+
 	return nil
 }
 
@@ -116,11 +152,48 @@ func (c *CLIChannel) readInput(ctx context.Context) {
 				Metadata:  make(map[string]string),
 			}
 
+			// Start a request/response turn, so next prompt appears after reply.
+			select {
+			case <-c.responseDone:
+			default:
+			}
+			c.setWaitingResponse(true)
+
 			select {
 			case c.messages <- msg:
 			case <-c.done:
+				c.setWaitingResponse(false)
+				return
+			case <-ctx.Done():
+				c.setWaitingResponse(false)
+				return
+			}
+
+			select {
+			case <-c.responseDone:
+			case <-c.done:
+				c.setWaitingResponse(false)
+				return
+			case <-ctx.Done():
+				c.setWaitingResponse(false)
 				return
 			}
 		}
 	}
+}
+
+func (c *CLIChannel) setWaitingResponse(v bool) {
+	c.mu.Lock()
+	c.waitingResp = v
+	c.mu.Unlock()
+}
+
+func (c *CLIChannel) completeWaitingResponse() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.waitingResp {
+		return false
+	}
+	c.waitingResp = false
+	return true
 }
