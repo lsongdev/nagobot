@@ -110,23 +110,9 @@ func createBootstrapFiles(workspace string) error {
 		{"AGENTS.md", "AGENTS.md"},
 		{"USER.md", "USER.md"},
 		{"cron.yaml", "cron.yaml"},
-		{"MEMORY_SKILL.md", filepath.Join(runtimecfg.WorkspaceSkillsDirName, runtimecfg.MemorySkillFileName)},
 	}
 	for _, t := range templates {
 		if err := writeTemplate(workspace, t.src, t.dst); err != nil {
-			return err
-		}
-	}
-
-	// Create memory directory and MEMORY.md
-	memoryDir := filepath.Join(workspace, runtimecfg.WorkspaceMemoryDirName)
-	if err := os.MkdirAll(memoryDir, 0755); err != nil {
-		return err
-	}
-	memoryDst := filepath.Join(memoryDir, runtimecfg.MemoryGlobalSummaryFileName)
-	if _, err := os.Stat(memoryDst); os.IsNotExist(err) {
-		data, _ := templateFS.ReadFile("templates/MEMORY.md")
-		if err := os.WriteFile(memoryDst, data, 0644); err != nil {
 			return err
 		}
 	}

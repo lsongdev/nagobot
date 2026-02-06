@@ -43,26 +43,6 @@ type Channel interface {
 	Messages() <-chan *Message
 }
 
-// MessageOrigin holds routing info for the current message, stored in context.
-type MessageOrigin struct {
-	Channel    string // Channel name (e.g., "telegram")
-	ReplyTo    string // Chat/user ID to reply to
-	SessionKey string // Session key for pending result isolation
-}
-
-type ctxKeyOrigin struct{}
-
-// WithOrigin returns a context with the message origin attached.
-func WithOrigin(ctx context.Context, origin MessageOrigin) context.Context {
-	return context.WithValue(ctx, ctxKeyOrigin{}, origin)
-}
-
-// GetOrigin returns the message origin from the context, if present.
-func GetOrigin(ctx context.Context) (MessageOrigin, bool) {
-	o, ok := ctx.Value(ctxKeyOrigin{}).(MessageOrigin)
-	return o, ok
-}
-
 // Handler is a function that processes incoming messages.
 type Handler func(ctx context.Context, msg *Message) (*Response, error)
 

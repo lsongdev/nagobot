@@ -17,6 +17,7 @@ var (
 	Version = "0.1.0"
 
 	logLevelOverride string
+	configDirFlag    string
 )
 
 // rootCmd is the root command.
@@ -57,8 +58,16 @@ func Execute() {
 
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.PersistentFlags().StringVar(&configDirFlag, "config-dir", "", "Override config directory (default: ~/.nagobot)")
 	rootCmd.PersistentFlags().StringVar(&logLevelOverride, "log-level", "", "Override log level for this run (debug, info, warn, error)")
-	rootCmd.PersistentPreRunE = applyRuntimeLogOverrides
+	rootCmd.PersistentPreRunE = applyRuntimeOverrides
+}
+
+func applyRuntimeOverrides(cmd *cobra.Command, args []string) error {
+	if configDirFlag != "" {
+		config.SetConfigDir(configDirFlag)
+	}
+	return applyRuntimeLogOverrides(cmd, args)
 }
 
 func applyRuntimeLogOverrides(cmd *cobra.Command, args []string) error {

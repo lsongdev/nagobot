@@ -1,4 +1,4 @@
-package agent
+package thread
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 )
 
 // Runner is a generic agent loop executor.
-// It can be used by both the main Agent and Subagents.
 type Runner struct {
 	provider provider.Provider
 	tools    *tools.Registry
@@ -33,18 +32,7 @@ func NewRunner(p provider.Provider, t *tools.Registry, maxIter int) *Runner {
 	}
 }
 
-// Run executes the agent loop with the given system prompt and user message.
-// This is the core agent loop that can be reused by different agent types.
-func (r *Runner) Run(ctx context.Context, systemPrompt, userMessage string) (string, error) {
-	messages := []provider.Message{
-		provider.SystemMessage(systemPrompt),
-		provider.UserMessage(userMessage),
-	}
-	return r.RunWithMessages(ctx, messages)
-}
-
 // RunWithMessages executes the agent loop with pre-built messages.
-// Useful when you need more control over the initial message context.
 func (r *Runner) RunWithMessages(ctx context.Context, messages []provider.Message) (string, error) {
 	toolDefs := r.tools.Defs()
 
@@ -61,7 +49,7 @@ func (r *Runner) RunWithMessages(ctx context.Context, messages []provider.Messag
 			return resp.Content, nil
 		}
 
-		messages = append(messages, provider.AssistantMessageWithTools(resp.Content, resp.ToolCalls))
+		messages = append(messages, provider.AssistantMessageWithTools(resp.Content, resp.ReasoningContent, resp.ToolCalls))
 
 		for _, tc := range resp.ToolCalls {
 			result := r.tools.Run(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))

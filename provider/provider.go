@@ -22,11 +22,12 @@ type Request struct {
 
 // Message represents a chat message in OpenAI format (internal canonical format).
 type Message struct {
-	Role       string     `json:"role"`                   // system, user, assistant, tool
-	Content    string     `json:"content,omitempty"`      // text content
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // for assistant messages
-	ToolCallID string     `json:"tool_call_id,omitempty"` // for tool result messages
-	Name       string     `json:"name,omitempty"`         // tool name for tool results
+	Role             string     `json:"role"`                      // system, user, assistant, tool
+	Content          string     `json:"content,omitempty"`         // text content
+	ReasoningContent string     `json:"reasoning_content,omitempty"` // reasoning text for providers that require it
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`      // for assistant messages
+	ToolCallID       string     `json:"tool_call_id,omitempty"`    // for tool result messages
+	Name             string     `json:"name,omitempty"`            // tool name for tool results
 }
 
 // ToolCall represents a tool invocation by the model.
@@ -44,9 +45,10 @@ type FunctionCall struct {
 
 // Response represents a chat completion response.
 type Response struct {
-	Content   string     // final text response
-	ToolCalls []ToolCall // tool calls (if any)
-	Usage     Usage      // token usage
+	Content          string     // final text response
+	ReasoningContent string     // reasoning text (provider-specific)
+	ToolCalls        []ToolCall // tool calls (if any)
+	Usage            Usage      // token usage
 }
 
 // HasToolCalls returns true if the response contains tool calls.
@@ -149,8 +151,8 @@ func AssistantMessage(content string) Message {
 }
 
 // AssistantMessageWithTools creates an assistant message with tool calls.
-func AssistantMessageWithTools(content string, toolCalls []ToolCall) Message {
-	return Message{Role: "assistant", Content: content, ToolCalls: toolCalls}
+func AssistantMessageWithTools(content, reasoningContent string, toolCalls []ToolCall) Message {
+	return Message{Role: "assistant", Content: content, ReasoningContent: reasoningContent, ToolCalls: toolCalls}
 }
 
 // ToolResultMessage creates a tool result message.

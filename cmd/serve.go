@@ -10,12 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/linanwx/nagobot/agent"
 	"github.com/linanwx/nagobot/channel"
 	"github.com/linanwx/nagobot/config"
 	"github.com/linanwx/nagobot/cron"
 	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
+	"github.com/linanwx/nagobot/thread"
+	"github.com/linanwx/nagobot/tools"
 	"github.com/spf13/cobra"
 )
 
@@ -49,20 +50,17 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Create agent
-	ag, err := agent.NewAgent(cfg)
+	rt, err := buildThreadRuntime(cfg, true)
 	if err != nil {
-		return fmt.Errorf("failed to create agent: %w", err)
+		return err
 	}
-	defer ag.Close()
+	threadMgr := thread.NewManager(rt.threadConfig)
 
-	// Create message handler
 	handler := func(ctx context.Context, msg *channel.Message) (*channel.Response, error) {
 		logger.Debug("received message",
 			"channel", msg.ChannelID,
@@ -70,13 +68,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 			"text", truncate(msg.Text, 50),
 		)
 
-		// Derive session key from channel and user
 		sessionKey := msg.ChannelID
 		if msg.UserID != "" {
 			sessionKey = msg.ChannelID + ":" + msg.UserID
 		}
 
-		// Build user message, injecting media metadata when present
 		userMessage := msg.Text
 		if mediaType := msg.Metadata["media_type"]; mediaType != "" {
 			var mediaParts []string
@@ -96,22 +92,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 			userMessage = fmt.Sprintf("[Media: %s]\n%s\n\n%s", mediaType, strings.Join(mediaParts, "\n"), msg.Text)
 		}
 
-		// Attach message origin to context for subagent push delivery.
-		// Extract channel name from channelID (e.g., "telegram:123456" -> "telegram")
-		originChannel := msg.ChannelID
-		if idx := strings.Index(originChannel, ":"); idx > 0 {
-			originChannel = originChannel[:idx]
-		}
-		ctx = channel.WithOrigin(ctx, channel.MessageOrigin{
-			Channel:    originChannel,
-			ReplyTo:    msg.Metadata["chat_id"],
-			SessionKey: sessionKey,
-		})
-
-		// Run agent with session history
-		response, err := ag.RunInSession(ctx, sessionKey, userMessage)
+		t := threadMgr.GetOrCreate(sessionKey, rt.soulAgent, nil)
+		response, err := t.Run(ctx, userMessage)
 		if err != nil {
-			logger.Error("agent error", "err", err)
+			logger.Error("thread error", "err", err)
 			return &channel.Response{
 				Text:    fmt.Sprintf("Error: %v", err),
 				ReplyTo: msg.Metadata["chat_id"],
@@ -124,21 +108,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}, nil
 	}
 
-	// Create channel manager
 	manager := channel.NewManager(handler)
 
-	// Register channels
 	if serveCLI || (!serveTelegram && !serveAll) {
-		manager.Register(channel.NewCLIChannel(channel.CLIConfig{
-			Prompt: "nagobot> ",
-		}))
+		manager.Register(channel.NewCLIChannel(channel.CLIConfig{Prompt: "nagobot> "}))
 		logger.Info("CLI channel enabled")
 	}
 
 	if serveTelegram || serveAll {
 		token := os.Getenv("TELEGRAM_BOT_TOKEN")
 		if token == "" {
-			// Try from config
 			if cfg.Channels != nil && cfg.Channels.Telegram != nil {
 				token = cfg.Channels.Telegram.Token
 			}
@@ -160,29 +139,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Wire send_message tool so agent can proactively send to channels
-	ag.SetChannelSender(manager)
+	// send_message is shared, and each thread clones this registry at runtime.
+	rt.toolRegistry.Register(tools.NewSendMessageTool(manager))
 
-	// Setup context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		<-sigChan
 		logger.Info("shutdown signal received")
 		cancel()
 	}()
 
-	// Create and start cron service
-	workspace, err := cfg.WorkspacePath()
-	if err != nil {
-		return fmt.Errorf("failed to get workspace: %w", err)
-	}
-	cronPath := filepath.Join(workspace, "cron.yaml")
+	cronPath := filepath.Join(rt.workspace, "cron.yaml")
 	cronSvc, err := cron.NewService(cronPath)
 	if err != nil {
 		logger.Warn("cron service not started", "err", err)
@@ -191,7 +162,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cronSvc.Start(func(ctx context.Context, job cron.Job) error {
 			logger.Info("cron job triggered", "id", job.ID, "name", job.Name)
 
-			// Delivery mode: send directly to a channel
 			if job.Payload.Deliver && job.Payload.Channel != "" {
 				if err := manager.SendTo(ctx, job.Payload.Channel, job.Payload.Message, job.Payload.To); err != nil {
 					logger.Error("cron delivery failed", "id", job.ID, "channel", job.Payload.Channel, "err", err)
@@ -200,19 +170,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 
-			// Agent mode: process through agent
-			_, err := ag.Run(ctx, job.Payload.Message)
+			t := thread.New(rt.threadConfig, rt.soulAgent, "cron:"+job.ID, nil)
+			_, err := t.Run(ctx, job.Payload.Message)
 			return err
 		})
-		if err := cronSvc.StartWatching(); err != nil {
-			logger.Warn("cron file watcher failed", "err", err)
-		}
+		cronSvc.StartWatching()
 	}
 
-	// Start heartbeat wakeup: periodically check HEARTBEAT.md for agent tasks.
-	// Strictly atomic: rename (claim) first, then read the claimed file.
-	// This eliminates the race window between read and rename.
-	heartbeatPath := filepath.Join(workspace, "HEARTBEAT.md")
+	heartbeatPath := filepath.Join(rt.workspace, "HEARTBEAT.md")
 	go func() {
 		ticker := time.NewTicker(runtimecfg.ServeHeartbeatTickInterval)
 		defer ticker.Stop()
@@ -221,37 +186,31 @@ func runServe(cmd *cobra.Command, args []string) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				// Step 1: Atomic claim — rename before reading.
-				// If the file doesn't exist or rename fails, nothing to do.
 				processingPath := heartbeatPath + ".processing"
 				if err := os.Rename(heartbeatPath, processingPath); err != nil {
-					continue // File doesn't exist or already claimed
+					continue
 				}
 
-				// Step 2: Read the claimed file.
 				content, err := os.ReadFile(processingPath)
 				if err != nil || len(strings.TrimSpace(string(content))) == 0 {
-					_ = os.Remove(processingPath) // Empty or unreadable, discard
+					_ = os.Remove(processingPath)
 					continue
 				}
 				task := strings.TrimSpace(string(content))
 
-				// Step 3: Execute.
 				logger.Info("heartbeat wakeup", "task", truncate(task, 80))
-				if _, err := ag.Run(ctx, "Heartbeat task:\n\n"+task); err != nil {
-					// Execution failed: preserve as .failed for inspection/retry
+				t := thread.New(rt.threadConfig, rt.soulAgent, "", nil)
+				if _, err := t.Run(ctx, "Heartbeat task:\n\n"+task); err != nil {
 					failedPath := heartbeatPath + ".failed"
 					_ = os.Rename(processingPath, failedPath)
-					logger.Error("heartbeat agent error, task preserved", "err", err, "path", failedPath)
+					logger.Error("heartbeat thread error, task preserved", "err", err, "path", failedPath)
 				} else {
-					// Success: remove the processing file
 					_ = os.Remove(processingPath)
 				}
 			}
 		}
 	}()
 
-	// Start all channels
 	if err := manager.StartAll(ctx); err != nil {
 		return fmt.Errorf("failed to start channels: %w", err)
 	}
@@ -259,14 +218,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	logger.Info("nagobot service started")
 	fmt.Println("nagobot is running. Press Ctrl+C to stop.")
 
-	// Wait for context cancellation
 	<-ctx.Done()
 
-	// Stop all components
 	if err := manager.StopAll(); err != nil {
 		logger.Error("error stopping channels", "err", err)
 	}
-
 	if cronSvc != nil {
 		cronSvc.Stop()
 	}

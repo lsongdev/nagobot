@@ -32,11 +32,3 @@ You are nagobot, a helpful AI assistant.
 Use available tools when appropriate to help the user. Ask for clarification when the task is ambiguous.
 
 {{SKILLS}}
-
-## Memory
-
-{{MEMORY}}
-
-## Today's Notes
-
-{{TODAY}}

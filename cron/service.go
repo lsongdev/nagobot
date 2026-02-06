@@ -4,13 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/linanwx/nagobot/logger"
 	"gopkg.in/yaml.v3"
@@ -26,9 +23,9 @@ type Service struct {
 	jobKeys    []string
 
 	mu             sync.RWMutex
-	watcher        *fsnotify.Watcher
 	scheduler      gocron.Scheduler
 	scheduledByKey map[string]gocron.Job
+	watching       bool
 	stopCh         chan struct{}
 	reconfigMu     sync.Mutex
 
@@ -71,16 +68,6 @@ func LoadConfig(configPath string) ([]Job, error) {
 	return cfg.Jobs, nil
 }
 
-// SaveConfig writes jobs to a cron config file.
-func SaveConfig(configPath string, jobs []Job) error {
-	cfg := Config{Jobs: jobs}
-	data, err := yaml.Marshal(&cfg)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(configPath, data, 0644)
-}
-
 // Reload reloads jobs from disk and re-arms scheduling.
 func (s *Service) Reload() error {
 	s.reconfigMu.Lock()
@@ -113,70 +100,33 @@ func (s *Service) Start(onJob JobHandler) {
 	}
 }
 
-// StartWatching watches cron config changes and auto-reloads.
-func (s *Service) StartWatching() error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(s.configPath)
-	if dir == "" {
-		dir = "."
-	}
-	if err := watcher.Add(dir); err != nil {
-		watcher.Close()
-		return err
-	}
-
+// StartWatching polls cron config and auto-reloads every minute.
+func (s *Service) StartWatching() {
 	s.mu.Lock()
-	if s.watcher != nil {
+	if s.watching {
 		s.mu.Unlock()
-		watcher.Close()
-		return nil
+		return
 	}
-	s.watcher = watcher
+	s.watching = true
 	s.mu.Unlock()
-
-	configPathAbs, err := filepath.Abs(s.configPath)
-	if err != nil {
-		configPathAbs = s.configPath
-	}
-	configPathAbs = filepath.Clean(configPathAbs)
 
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+
 		for {
 			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
+			case <-ticker.C:
+				if err := s.Reload(); err != nil {
+					logger.Warn("cron reload failed", "path", s.configPath, "err", err)
 				}
-				eventPathAbs, absErr := filepath.Abs(event.Name)
-				if absErr != nil {
-					eventPathAbs = event.Name
-				}
-				if filepath.Clean(eventPathAbs) != configPathAbs {
-					continue
-				}
-				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
-					if err := s.Reload(); err != nil {
-						logger.Warn("cron reload failed", "path", s.configPath, "err", err)
-					}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				logger.Warn("cron watcher error", "err", err)
 			case <-s.stopCh:
 				return
 			}
 		}
 	}()
-
-	return nil
 }
 
 // Stop stops watcher and scheduler loops.
@@ -187,78 +137,19 @@ func (s *Service) Stop() {
 
 	s.reconfigMu.Lock()
 	s.mu.Lock()
-	watcher := s.watcher
-	s.watcher = nil
 	scheduler := s.scheduler
 	s.scheduler = nil
 	s.scheduledByKey = make(map[string]gocron.Job)
+	s.watching = false
 	s.started = false
 	s.mu.Unlock()
 	s.reconfigMu.Unlock()
-
-	if watcher != nil {
-		_ = watcher.Close()
-	}
 
 	if scheduler != nil {
 		_ = scheduler.Shutdown()
 	}
 
 	s.wg.Wait()
-}
-
-// Jobs returns current jobs sorted by nearest next run first.
-func (s *Service) Jobs(includeDisabled bool) []Job {
-	s.mu.RLock()
-	jobsCopy := append([]Job(nil), s.jobs...)
-	jobKeysCopy := append([]string(nil), s.jobKeys...)
-	scheduler := s.scheduler
-	s.mu.RUnlock()
-
-	nextByKey := make(map[string]int64)
-	if scheduler != nil {
-		for _, scheduled := range scheduler.Jobs() {
-			nextRun, err := scheduled.NextRun()
-			if err != nil || nextRun.IsZero() {
-				continue
-			}
-			nextByKey[scheduled.Name()] = nextRun.UnixMilli()
-		}
-	}
-
-	type item struct {
-		job     Job
-		nextRun int64
-	}
-	items := make([]item, 0, len(jobsCopy))
-	for i, job := range jobsCopy {
-		if !includeDisabled && !job.Enabled {
-			continue
-		}
-		nextRun := int64(0)
-		if i < len(jobKeysCopy) {
-			nextRun = nextByKey[jobKeysCopy[i]]
-		}
-		items = append(items, item{job: job, nextRun: nextRun})
-	}
-
-	sort.Slice(items, func(i, j int) bool {
-		left := items[i].nextRun
-		right := items[j].nextRun
-		if left == 0 {
-			return false
-		}
-		if right == 0 {
-			return true
-		}
-		return left < right
-	})
-
-	out := make([]Job, 0, len(items))
-	for _, it := range items {
-		out = append(out, it.job)
-	}
-	return out
 }
 
 func (s *Service) applyJobs(jobs []Job) error {

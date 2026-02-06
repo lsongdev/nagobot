@@ -2,91 +2,104 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/linanwx/nagobot/internal/runtimecfg"
+	"gopkg.in/yaml.v3"
 )
+
+const (
+	configFileName = "config.yaml"
+)
+
+var configDirOverride string
+
+// SetConfigDir overrides the config directory for the current process.
+// Empty value clears the override.
+func SetConfigDir(dir string) {
+	configDirOverride = strings.TrimSpace(dir)
+}
 
 // Config is the root configuration structure.
 type Config struct {
-	Agents    AgentsConfig    `json:"agents"`
-	Providers ProvidersConfig `json:"providers"`
-	Tools     ToolsConfig     `json:"tools,omitempty"`
-	Channels  *ChannelsConfig `json:"channels,omitempty"`
-	Logging   LoggingConfig   `json:"logging,omitempty"`
+	Agents    AgentsConfig    `json:"agents" yaml:"agents"`
+	Providers ProvidersConfig `json:"providers" yaml:"providers"`
+	Tools     ToolsConfig     `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Channels  *ChannelsConfig `json:"channels,omitempty" yaml:"channels,omitempty"`
+	Logging   LoggingConfig   `json:"logging,omitempty" yaml:"logging,omitempty"`
 }
 
 // AgentsConfig contains agent-related configuration.
 type AgentsConfig struct {
-	Defaults AgentDefaults `json:"defaults"`
+	Defaults AgentDefaults `json:"defaults" yaml:"defaults"`
 }
 
 // AgentDefaults contains default settings for agents.
 type AgentDefaults struct {
-	Provider          string  `json:"provider"`                    // openrouter, anthropic
-	ModelType         string  `json:"modelType"`                   // moonshotai/kimi-k2.5, claude-sonnet-4-5
-	ModelName         string  `json:"modelName,omitempty"`         // optional, defaults to modelType
-	Workspace         string  `json:"workspace,omitempty"`         // defaults to ~/.nagobot/workspace
-	MaxTokens         int     `json:"maxTokens,omitempty"`         // defaults to 8192
-	Temperature       float64 `json:"temperature,omitempty"`       // defaults to 0.95
-	MaxToolIterations int     `json:"maxToolIterations,omitempty"` // defaults to 20
+	Provider          string  `json:"provider" yaml:"provider"`                                       // openrouter, anthropic
+	ModelType         string  `json:"modelType" yaml:"modelType"`                                     // moonshotai/kimi-k2.5, claude-sonnet-4-5
+	ModelName         string  `json:"modelName,omitempty" yaml:"modelName,omitempty"`                 // optional, defaults to modelType
+	Workspace         string  `json:"workspace,omitempty" yaml:"workspace,omitempty"`                 // defaults to ~/.nagobot/workspace
+	MaxTokens         int     `json:"maxTokens,omitempty" yaml:"maxTokens,omitempty"`                 // defaults to 8192
+	Temperature       float64 `json:"temperature,omitempty" yaml:"temperature,omitempty"`             // defaults to 0.95
+	MaxToolIterations int     `json:"maxToolIterations,omitempty" yaml:"maxToolIterations,omitempty"` // defaults to 100
 }
 
 // ProvidersConfig contains provider API configurations.
 type ProvidersConfig struct {
-	OpenRouter *ProviderConfig `json:"openrouter,omitempty"`
-	Anthropic  *ProviderConfig `json:"anthropic,omitempty"`
+	OpenRouter *ProviderConfig `json:"openrouter,omitempty" yaml:"openrouter,omitempty"`
+	Anthropic  *ProviderConfig `json:"anthropic,omitempty" yaml:"anthropic,omitempty"`
 }
 
 // ProviderConfig contains API credentials for a provider.
 type ProviderConfig struct {
-	APIKey  string `json:"apiKey"`
-	APIBase string `json:"apiBase,omitempty"` // optional custom base URL
+	APIKey  string `json:"apiKey" yaml:"apiKey"`
+	APIBase string `json:"apiBase,omitempty" yaml:"apiBase,omitempty"` // optional custom base URL
 }
 
 // ToolsConfig contains tool-related configuration.
 type ToolsConfig struct {
-	Web  WebToolsConfig  `json:"web,omitempty"`
-	Exec ExecToolsConfig `json:"exec,omitempty"`
+	Web  WebToolsConfig  `json:"web,omitempty" yaml:"web,omitempty"`
+	Exec ExecToolsConfig `json:"exec,omitempty" yaml:"exec,omitempty"`
 }
 
 // LoggingConfig contains logging configuration.
 type LoggingConfig struct {
-	Enabled *bool  `json:"enabled,omitempty"`
-	Level   string `json:"level,omitempty"`  // debug, info, warn, error
-	Stdout  bool   `json:"stdout,omitempty"` // log to stdout
-	File    string `json:"file,omitempty"`   // log file path
+	Enabled *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Level   string `json:"level,omitempty" yaml:"level,omitempty"`   // debug, info, warn, error
+	Stdout  bool   `json:"stdout,omitempty" yaml:"stdout,omitempty"` // log to stdout
+	File    string `json:"file,omitempty" yaml:"file,omitempty"`     // log file path
 }
 
 // WebToolsConfig contains web tool configuration.
 type WebToolsConfig struct {
-	Search SearchConfig `json:"search,omitempty"`
+	Search SearchConfig `json:"search,omitempty" yaml:"search,omitempty"`
 }
 
 // SearchConfig contains web search configuration.
 type SearchConfig struct {
-	APIKey     string `json:"apiKey,omitempty"` // Brave API key
-	MaxResults int    `json:"maxResults,omitempty"`
+	APIKey     string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"` // Brave API key
+	MaxResults int    `json:"maxResults,omitempty" yaml:"maxResults,omitempty"`
 }
 
 // ExecToolsConfig contains exec tool configuration.
 type ExecToolsConfig struct {
-	Timeout             int  `json:"timeout,omitempty"`             // seconds
-	RestrictToWorkspace bool `json:"restrictToWorkspace,omitempty"` // restrict to workspace
+	Timeout             int  `json:"timeout,omitempty" yaml:"timeout,omitempty"`                         // seconds
+	RestrictToWorkspace bool `json:"restrictToWorkspace,omitempty" yaml:"restrictToWorkspace,omitempty"` // restrict to workspace
 }
 
 // ChannelsConfig contains channel configurations.
 type ChannelsConfig struct {
-	Telegram *TelegramChannelConfig `json:"telegram,omitempty"`
+	Telegram *TelegramChannelConfig `json:"telegram,omitempty" yaml:"telegram,omitempty"`
 }
 
 // TelegramChannelConfig contains Telegram bot configuration.
 type TelegramChannelConfig struct {
-	Token      string  `json:"token"`                // Bot token from BotFather
-	AllowedIDs []int64 `json:"allowedIds,omitempty"` // Allowed user/chat IDs
+	Token      string  `json:"token" yaml:"token"`                               // Bot token from BotFather
+	AllowedIDs []int64 `json:"allowedIds,omitempty" yaml:"allowedIds,omitempty"` // Allowed user/chat IDs
 }
 
 // DefaultConfig returns a config with sensible defaults.
@@ -100,6 +113,11 @@ func DefaultConfig() *Config {
 				MaxTokens:         runtimecfg.AgentDefaultMaxTokens,
 				Temperature:       runtimecfg.AgentDefaultTemperature,
 				MaxToolIterations: runtimecfg.AgentDefaultMaxToolIterations,
+			},
+		},
+		Providers: ProvidersConfig{
+			OpenRouter: &ProviderConfig{
+				APIKey: "",
 			},
 		},
 		Logging: logDefaults,
@@ -123,6 +141,28 @@ func defaultLoggingConfig() LoggingConfig {
 
 // ConfigDir returns the nagobot config directory (~/.nagobot).
 func ConfigDir() (string, error) {
+	if configDirOverride != "" {
+		dir := configDirOverride
+		if dir == "~" || strings.HasPrefix(dir, "~/") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			if dir == "~" {
+				return home, nil
+			}
+			return filepath.Join(home, dir[2:]), nil
+		}
+		if filepath.IsAbs(dir) {
+			return filepath.Clean(dir), nil
+		}
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Clean(abs), nil
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -130,13 +170,13 @@ func ConfigDir() (string, error) {
 	return filepath.Join(home, ".nagobot"), nil
 }
 
-// ConfigPath returns the path to config.json.
+// ConfigPath returns the default YAML config path.
 func ConfigPath() (string, error) {
 	dir, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "config.json"), nil
+	return filepath.Join(dir, configFileName), nil
 }
 
 // WorkspacePath returns the workspace path, expanding ~ if needed.
@@ -230,12 +270,11 @@ func Load() (*Config, error) {
 	}
 
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 
 	cfg.applyDefaults()
-
 	return &cfg, nil
 }
 
@@ -265,20 +304,19 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// Save saves the configuration to disk.
+// Save saves the configuration to config.yaml.
 func (c *Config) Save() error {
 	path, err := ConfigPath()
 	if err != nil {
 		return err
 	}
 
-	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	data, err := json.MarshalIndent(c, "", "  ")
+	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err
 	}

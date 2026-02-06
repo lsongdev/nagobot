@@ -40,18 +40,14 @@ go build -o nagobot .
 ./nagobot onboard
 ```
 
-2. Edit config (default: `~/.nagobot/config.json`) and set your API key.
+2. Edit config (default: `~/.nagobot/config.yaml`) and set your API key.
 
 For example:
 
-```json
-{
-  "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
-    }
-  }
-}
+```yaml
+providers:
+  openrouter:
+    apiKey: sk-or-v1-xxx
 ```
 
 3. Start service:
@@ -75,15 +71,10 @@ For example:
 
 Telegram config example (token redacted):
 
-```json
-{
-  "channels": {
-    "telegram": {
-      "token": "1234567890:AA***************",
-      "allowedIds": [
-        1234567890
-      ]
-    }
-  }
-}
+```yaml
+channels:
+  telegram:
+    token: "1234567890:AA***************"
+    allowedIds:
+      - 1234567890
 ```

@@ -5,21 +5,8 @@ import "time"
 const (
 	AgentDefaultMaxTokens         = 8192
 	AgentDefaultTemperature       = 0.95
-	AgentDefaultMaxToolIterations = 20
+	AgentDefaultMaxToolIterations = 100
 	AgentSessionMaxMessages       = 40
-)
-
-const (
-	BusDefaultBufferSize = 100
-)
-
-const (
-	SubagentDefaultMaxConcurrent = 5
-)
-
-const (
-	SubagentDefaultTimeout   = 5 * time.Minute
-	SubagentWaitPollInterval = 100 * time.Millisecond
 )
 
 const (
@@ -56,24 +43,5 @@ const (
 )
 
 const (
-	WorkspaceMemoryDirName = "memory"
 	WorkspaceSkillsDirName = "skills"
-)
-
-const (
-	MemoryTurnsDirName          = "turns"
-	MemoryIndexDirName          = "index"
-	MemoryGlobalSummaryFileName = "MEMORY.md"
-	MemorySkillFileName         = "memory.md"
-	MemoryIndexFileExt          = ".jsonl"
-)
-
-const (
-	MemoryExcerptChars          = 50
-	MemoryDailyMaxTurns         = 50
-	MemoryDailySummaryMaxChars  = 500
-	MemoryGlobalMaxTurns        = 50
-	MemoryGlobalSummaryMaxChars = 1000
-	MemoryMaxKeywordsPerTurn    = 8
-	MemoryMaxMarkersPerTurn     = 6
 )

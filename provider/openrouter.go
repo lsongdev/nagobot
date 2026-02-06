@@ -3,7 +3,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/linanwx/nagobot/internal/runtimecfg"
@@ -12,6 +14,35 @@ import (
 	oaioption "github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/shared"
 )
+
+func extractReasoningText(rawMessage string) string {
+	if rawMessage == "" {
+		return ""
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rawMessage), &payload); err != nil {
+		return ""
+	}
+
+	for _, key := range []string{"reasoning", "reasoning_content", "thinking", "thinking_content"} {
+		v, ok := payload[key]
+		if !ok || v == nil {
+			continue
+		}
+		switch t := v.(type) {
+		case string:
+			return t
+		default:
+			b, err := json.Marshal(t)
+			if err == nil {
+				return string(b)
+			}
+		}
+	}
+
+	return ""
+}
 
 const (
 	openRouterAPIBase = "https://openrouter.ai/api/v1"
@@ -78,6 +109,24 @@ func toOpenAIChatMessages(messages []Message) ([]openai.ChatCompletionMessagePar
 			assistant := openai.ChatCompletionAssistantMessageParam{}
 			if m.Content != "" {
 				assistant.Content.OfString = openai.String(m.Content)
+			} else if len(m.ToolCalls) > 0 {
+				// Some upstream providers (e.g. Moonshot via OpenRouter) reject empty
+				// assistant messages even when tool_calls are present.
+				assistant.Content.OfString = openai.String("(tool call)")
+			} else {
+				assistant.Content.OfString = openai.String("(empty assistant message)")
+			}
+			if len(m.ToolCalls) > 0 {
+				reasoningContent := strings.TrimSpace(m.ReasoningContent)
+				if reasoningContent == "" {
+					reasoningContent = strings.TrimSpace(m.Content)
+				}
+				if reasoningContent == "" {
+					reasoningContent = "(tool call)"
+				}
+				assistant.SetExtraFields(map[string]any{
+					"reasoning_content": reasoningContent,
+				})
 			}
 
 			if len(m.ToolCalls) > 0 {
@@ -195,6 +244,14 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 	choice := chatResp.Choices[0]
 	toolCalls := fromOpenAIChatToolCalls(choice.Message.ToolCalls)
 	reasoningTokens := chatResp.Usage.CompletionTokensDetails.ReasoningTokens
+	rawMessage := choice.Message.RawJSON()
+	rawResponse := chatResp.RawJSON()
+	reasoningText := extractReasoningText(rawMessage)
+	finalContent := choice.Message.Content
+	if strings.TrimSpace(finalContent) == "" && len(toolCalls) == 0 && strings.TrimSpace(reasoningText) != "" {
+		logger.Warn("openrouter response content empty, using reasoning text fallback")
+		finalContent = reasoningText
+	}
 
 	logger.Debug(
 		"openrouter response",
@@ -212,10 +269,17 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 		"outputChars", len(choice.Message.Content),
 		"latencyMs", time.Since(start).Milliseconds(),
 	)
+	logger.Debug(
+		"openrouter raw output",
+		"rawMessage", rawMessage,
+		"rawResponse", rawResponse,
+		"reasoningText", reasoningText,
+	)
 
 	return &Response{
-		Content:   choice.Message.Content,
-		ToolCalls: toolCalls,
+		Content:          finalContent,
+		ReasoningContent: reasoningText,
+		ToolCalls:        toolCalls,
 		Usage: Usage{
 			PromptTokens:     int(chatResp.Usage.PromptTokens),
 			CompletionTokens: int(chatResp.Usage.CompletionTokens),

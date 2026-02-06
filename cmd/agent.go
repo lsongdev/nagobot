@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/linanwx/nagobot/agent"
 	"github.com/linanwx/nagobot/config"
 	"github.com/linanwx/nagobot/provider"
+	"github.com/linanwx/nagobot/thread"
 )
 
 var (
@@ -57,28 +57,24 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("message is required (-m flag)\nFor interactive mode, use: nagobot serve --cli")
 	}
 
-	// Load config (from custom path or default)
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w\nRun 'nagobot onboard' to initialize", err)
 	}
 
-	// Apply CLI flag overrides
 	applyAgentOverrides(cfg)
 
-	// Create agent
-	a, err := agent.NewAgent(cfg)
+	rt, err := buildThreadRuntime(cfg, false)
 	if err != nil {
-		return fmt.Errorf("failed to create agent: %w", err)
+		return err
 	}
-	defer a.Close()
 
-	ctx := context.Background()
-
-	response, err := a.Run(ctx, messageFlag)
+	t := thread.New(rt.threadConfig, rt.soulAgent, "", nil)
+	response, err := t.Run(context.Background(), messageFlag)
 	if err != nil {
 		return fmt.Errorf("agent error: %w", err)
 	}
+
 	fmt.Println(response)
 	return nil
 }
