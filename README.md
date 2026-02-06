@@ -72,3 +72,18 @@ For example:
 # Enable all configured channels
 ./nagobot serve --all
 ```
+
+Telegram config example (token redacted):
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "token": "1234567890:AA***************",
+      "allowedIds": [
+        1234567890
+      ]
+    }
+  }
+}
+```
