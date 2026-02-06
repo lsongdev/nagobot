@@ -42,6 +42,18 @@ go build -o nagobot .
 
 2. Edit config (default: `~/.nagobot/config.json`) and set your API key.
 
+For example:
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "sk-or-v1-xxx"
+    }
+  }
+}
+```
+
 3. Start service:
 
 ```bash
