@@ -22,6 +22,15 @@ type Sink func(ctx context.Context, response string) error
 // ProviderFactory creates provider instances for a provider/model pair.
 type ProviderFactory func(providerName, modelType string) (provider.Provider, error)
 
+// ThreadType marks the execution mode of a thread.
+type ThreadType string
+
+const (
+	ThreadTypePlain   ThreadType = "plain"
+	ThreadTypeChannel ThreadType = "channel"
+	ThreadTypeChild   ThreadType = "child"
+)
+
 // Config contains shared dependencies for creating threads.
 type Config struct {
 	DefaultProvider provider.Provider
@@ -38,14 +47,14 @@ type Config struct {
 type Manager struct {
 	cfg     *Config
 	mu      sync.Mutex
-	threads map[string]*Thread
+	threads map[string]*ChannelThread
 }
 
 // NewManager creates a thread manager.
 func NewManager(cfg *Config) *Manager {
 	return &Manager{
 		cfg:     cfg,
-		threads: make(map[string]*Thread),
+		threads: make(map[string]*ChannelThread),
 	}
 }
 
@@ -53,7 +62,16 @@ func NewManager(cfg *Config) *Manager {
 // Empty session keys always return a fresh stateless thread.
 func (m *Manager) GetOrCreate(sessionKey string, ag *agent.Agent, sink Sink) *Thread {
 	if strings.TrimSpace(sessionKey) == "" {
-		return New(m.cfg, ag, "", sink)
+		return NewPlain(m.cfg, ag, sink).Thread
+	}
+	return m.GetOrCreateChannel(sessionKey, ag, sink).Thread
+}
+
+// GetOrCreateChannel returns an existing channel thread, or creates one.
+func (m *Manager) GetOrCreateChannel(sessionKey string, ag *agent.Agent, sink Sink) *ChannelThread {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		sessionKey = "channel:default"
 	}
 
 	m.mu.Lock()
@@ -67,7 +85,7 @@ func (m *Manager) GetOrCreate(sessionKey string, ag *agent.Agent, sink Sink) *Th
 		return t
 	}
 
-	t := New(m.cfg, ag, sessionKey, sink)
+	t := NewChannel(m.cfg, ag, sessionKey, sink)
 	m.threads[sessionKey] = t
 	return t
 }
@@ -75,6 +93,7 @@ func (m *Manager) GetOrCreate(sessionKey string, ag *agent.Agent, sink Sink) *Th
 // Thread is a single execution unit (agent + runner + optional session + sink).
 type Thread struct {
 	id        string
+	kind      ThreadType
 	cfg       *Config
 	agent     *agent.Agent
 	provider  provider.Provider
@@ -94,6 +113,21 @@ type Thread struct {
 	pendingResults []pendingChildResult
 }
 
+// PlainThread is the base execution thread.
+type PlainThread struct {
+	*Thread
+}
+
+// ChannelThread composes PlainThread with channel/session semantics.
+type ChannelThread struct {
+	*PlainThread
+}
+
+// ChildThread composes PlainThread for delegated child work.
+type ChildThread struct {
+	*PlainThread
+}
+
 type childState struct {
 	done   chan struct{}
 	result string
@@ -106,8 +140,45 @@ type pendingChildResult struct {
 	Err    error
 }
 
-// New creates a new thread instance.
+// NewPlain creates a stateless plain thread.
+func NewPlain(cfg *Config, ag *agent.Agent, sink Sink) *PlainThread {
+	return &PlainThread{
+		Thread: newThread(cfg, ag, "", sink, ThreadTypePlain, true),
+	}
+}
+
+// NewChannel creates a channel-bound thread that can persist session state.
+func NewChannel(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink) *ChannelThread {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		sessionKey = "channel:default"
+	}
+	return &ChannelThread{
+		PlainThread: &PlainThread{
+			Thread: newThread(cfg, ag, sessionKey, sink, ThreadTypeChannel, true),
+		},
+	}
+}
+
+// NewChild creates a child thread. Child threads cannot spawn nested children.
+func NewChild(cfg *Config, ag *agent.Agent, sink Sink) *ChildThread {
+	return &ChildThread{
+		PlainThread: &PlainThread{
+			Thread: newThread(cfg, ag, "", sink, ThreadTypeChild, false),
+		},
+	}
+}
+
+// New keeps backward compatibility while preferring explicit constructors.
 func New(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink) *Thread {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return NewPlain(cfg, ag, sink).Thread
+	}
+	return NewChannel(cfg, ag, sessionKey, sink).Thread
+}
+
+func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind ThreadType, allowSpawn bool) *Thread {
 	if cfg == nil {
 		cfg = &Config{}
 	}
@@ -127,6 +198,7 @@ func New(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink) *Thread {
 
 	return &Thread{
 		id:         fmt.Sprintf("thread-%d", time.Now().UnixNano()),
+		kind:       kind,
 		cfg:        cfg,
 		agent:      ag,
 		provider:   cfg.DefaultProvider,
@@ -137,9 +209,14 @@ func New(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink) *Thread {
 		maxIter:    maxIter,
 		sessionKey: sessionKey,
 		sink:       sink,
-		allowSpawn: true,
+		allowSpawn: allowSpawn,
 		children:   make(map[string]*childState),
 	}
+}
+
+// Type returns the runtime thread type.
+func (t *Thread) Type() ThreadType {
+	return t.kind
 }
 
 // Run executes one thread turn.
@@ -223,8 +300,7 @@ func (t *Thread) SpawnChild(ctx context.Context, ag *agent.Agent, task, taskCont
 	}
 
 	childAgent := wrapAgentTaskPlaceholder(ag, task)
-	child := New(t.cfg, childAgent, "", nil)
-	child.allowSpawn = false
+	child := NewChild(t.cfg, childAgent, nil)
 
 	userMessage := task
 	if strings.TrimSpace(taskContext) != "" {
@@ -314,7 +390,7 @@ func (t *Thread) runtimeTools() *tools.Registry {
 }
 
 func (t *Thread) loadSession() *Session {
-	if t.sessionKey == "" || t.cfg.Sessions == nil {
+	if t.kind != ThreadTypeChannel || t.sessionKey == "" || t.cfg.Sessions == nil {
 		return nil
 	}
 

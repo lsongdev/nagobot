@@ -12,7 +12,6 @@ import (
 
 	"github.com/linanwx/nagobot/channel"
 	"github.com/linanwx/nagobot/config"
-	"github.com/linanwx/nagobot/cron"
 	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/thread"
@@ -92,7 +91,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 			userMessage = fmt.Sprintf("[Media: %s]\n%s\n\n%s", mediaType, strings.Join(mediaParts, "\n"), msg.Text)
 		}
 
-		t := threadMgr.GetOrCreate(sessionKey, rt.soulAgent, nil)
+		t := threadMgr.GetOrCreateChannel(sessionKey, rt.soulAgent, nil)
 		response, err := t.Run(ctx, userMessage)
 		if err != nil {
 			logger.Error("thread error", "err", err)
@@ -153,30 +152,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	cronPath := filepath.Join(rt.workspace, "cron.yaml")
-	cronSvc, err := cron.NewService(cronPath)
-	if err != nil {
-		logger.Warn("cron service not started", "err", err)
-	}
-	if cronSvc != nil {
-		cronSvc.Start(func(ctx context.Context, job cron.Job) error {
-			logger.Info("cron job triggered", "id", job.ID, "name", job.Name)
-
-			if job.Payload.Deliver && job.Payload.Channel != "" {
-				if err := manager.SendTo(ctx, job.Payload.Channel, job.Payload.Message, job.Payload.To); err != nil {
-					logger.Error("cron delivery failed", "id", job.ID, "channel", job.Payload.Channel, "err", err)
-					return err
-				}
-				return nil
-			}
-
-			t := thread.New(rt.threadConfig, rt.soulAgent, "cron:"+job.ID, nil)
-			_, err := t.Run(ctx, job.Payload.Message)
-			return err
-		})
-		cronSvc.StartWatching()
-	}
-
 	heartbeatPath := filepath.Join(rt.workspace, "HEARTBEAT.md")
 	go func() {
 		ticker := time.NewTicker(runtimecfg.ServeHeartbeatTickInterval)
@@ -199,7 +174,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 				task := strings.TrimSpace(string(content))
 
 				logger.Info("heartbeat wakeup", "task", truncate(task, 80))
-				t := thread.New(rt.threadConfig, rt.soulAgent, "", nil)
+				t := thread.NewPlain(rt.threadConfig, rt.soulAgent, nil)
 				if _, err := t.Run(ctx, "Heartbeat task:\n\n"+task); err != nil {
 					failedPath := heartbeatPath + ".failed"
 					_ = os.Rename(processingPath, failedPath)
@@ -222,9 +197,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	if err := manager.StopAll(); err != nil {
 		logger.Error("error stopping channels", "err", err)
-	}
-	if cronSvc != nil {
-		cronSvc.Stop()
 	}
 
 	logger.Info("nagobot service stopped")

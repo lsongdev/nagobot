@@ -37,7 +37,7 @@ func (t *UseSkillTool) Def() provider.ToolDef {
 				"properties": map[string]any{
 					"name": map[string]any{
 						"type":        "string",
-						"description": "The skill name to load (for example: 'cron').",
+						"description": "The skill name to load (for example: 'research').",
 					},
 				},
 				"required": []string{"name"},

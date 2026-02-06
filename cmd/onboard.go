@@ -109,7 +109,6 @@ func createBootstrapFiles(workspace string) error {
 		{"SOUL.md", "SOUL.md"},
 		{"AGENTS.md", "AGENTS.md"},
 		{"USER.md", "USER.md"},
-		{"cron.yaml", "cron.yaml"},
 	}
 	for _, t := range templates {
 		if err := writeTemplate(workspace, t.src, t.dst); err != nil {

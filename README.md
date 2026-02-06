@@ -1,6 +1,6 @@
 # nagobot
 
-`nagobot` is a lightweight AI assistant built with Go. It supports multiple providers (OpenRouter / Anthropic), tool calling, sessions, cron jobs, multi-channel service mode (CLI / Telegram), and file-based memory indexing.
+`nagobot` is a lightweight AI assistant built with Go. It supports multiple providers (OpenRouter / Anthropic), tool calling, sessions, multi-channel service mode (CLI / Telegram), and file-based memory indexing.
 
 Inspired by nanobot (`github.com/HKUDS/nanobot`) and openclaw (`github.com/openclaw`).
 

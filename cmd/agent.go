@@ -69,7 +69,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	t := thread.New(rt.threadConfig, rt.soulAgent, "", nil)
+	t := thread.NewPlain(rt.threadConfig, rt.soulAgent, nil)
 	response, err := t.Run(context.Background(), messageFlag)
 	if err != nil {
 		return fmt.Errorf("agent error: %w", err)
