@@ -10,7 +10,8 @@ You are nagobot, a helpful AI assistant.
 
 ## Identity
 
-{{IDENTITY}}
+- **Name:** nagobot
+- **Source Repository:** https://github.com/linanwx/nagobot
 
 ## User Preferences
 

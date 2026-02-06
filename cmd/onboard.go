@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/linanwx/nagobot/config"
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 )
 
 //go:embed templates/*
@@ -96,13 +97,20 @@ func writeTemplate(workspace, templateName, destName string) error {
 }
 
 func createBootstrapFiles(workspace string) error {
+	// Create agents/ and skills/ directories first so nested templates can be copied.
+	for _, dir := range []string{"agents", runtimecfg.WorkspaceSkillsDirName} {
+		if err := os.MkdirAll(filepath.Join(workspace, dir), 0755); err != nil {
+			return err
+		}
+	}
+
 	// Write top-level template files
 	templates := []struct{ src, dst string }{
 		{"SOUL.md", "SOUL.md"},
 		{"AGENTS.md", "AGENTS.md"},
 		{"USER.md", "USER.md"},
-		{"IDENTITY.md", "IDENTITY.md"},
 		{"cron.yaml", "cron.yaml"},
+		{"MEMORY_SKILL.md", filepath.Join(runtimecfg.WorkspaceSkillsDirName, runtimecfg.MemorySkillFileName)},
 	}
 	for _, t := range templates {
 		if err := writeTemplate(workspace, t.src, t.dst); err != nil {
@@ -111,21 +119,14 @@ func createBootstrapFiles(workspace string) error {
 	}
 
 	// Create memory directory and MEMORY.md
-	memoryDir := filepath.Join(workspace, "memory")
+	memoryDir := filepath.Join(workspace, runtimecfg.WorkspaceMemoryDirName)
 	if err := os.MkdirAll(memoryDir, 0755); err != nil {
 		return err
 	}
-	memoryDst := filepath.Join(memoryDir, "MEMORY.md")
+	memoryDst := filepath.Join(memoryDir, runtimecfg.MemoryGlobalSummaryFileName)
 	if _, err := os.Stat(memoryDst); os.IsNotExist(err) {
 		data, _ := templateFS.ReadFile("templates/MEMORY.md")
 		if err := os.WriteFile(memoryDst, data, 0644); err != nil {
-			return err
-		}
-	}
-
-	// Create agents/ and skills/ directories
-	for _, dir := range []string{"agents", "skills"} {
-		if err := os.MkdirAll(filepath.Join(workspace, dir), 0755); err != nil {
 			return err
 		}
 	}

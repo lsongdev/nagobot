@@ -111,9 +111,6 @@ func NewAgent(cfg *config.Config) (*Agent, error) {
 
 	// Create skill registry
 	skillRegistry := skills.NewRegistry()
-	if err := ensureDefaultMemorySkill(workspace); err != nil {
-		logger.Warn("failed to ensure default memory skill", "err", err)
-	}
 	// Load custom skills from workspace
 	skillsDir := filepath.Join(workspace, runtimecfg.WorkspaceSkillsDirName)
 	if err := skillRegistry.LoadFromDirectory(skillsDir); err != nil {
@@ -364,10 +361,7 @@ Available Tools: %s
 	prompt = strings.ReplaceAll(prompt, "{{WORKSPACE}}", a.workspace)
 	prompt = strings.ReplaceAll(prompt, "{{TOOLS}}", strings.Join(a.tools.Names(), ", "))
 
-	// Identity / User / Agents context files (optional, empty if not present)
-	identityContent, _ := os.ReadFile(filepath.Join(a.workspace, "IDENTITY.md"))
-	prompt = strings.ReplaceAll(prompt, "{{IDENTITY}}", strings.TrimSpace(string(identityContent)))
-
+	// User / Agents context files (optional, empty if not present)
 	userContent, _ := os.ReadFile(filepath.Join(a.workspace, "USER.md"))
 	prompt = strings.ReplaceAll(prompt, "{{USER}}", strings.TrimSpace(string(userContent)))
 
