@@ -31,8 +31,8 @@ type AgentsConfig struct {
 
 // AgentDefaults contains default settings for agents.
 type AgentDefaults struct {
-	Provider            string  `json:"provider" yaml:"provider"`                                           // openrouter, anthropic
-	ModelType           string  `json:"modelType" yaml:"modelType"`                                         // moonshotai/kimi-k2.5, claude-sonnet-4-5
+	Provider            string  `json:"provider" yaml:"provider"`                                           // openrouter, anthropic, deepseek
+	ModelType           string  `json:"modelType" yaml:"modelType"`                                         // moonshotai/kimi-k2.5, claude-sonnet-4-5, deepseek-chat
 	ModelName           string  `json:"modelName,omitempty" yaml:"modelName,omitempty"`                     // optional, defaults to modelType
 	Workspace           string  `json:"workspace,omitempty" yaml:"workspace,omitempty"`                     // defaults to ~/.nagobot/workspace
 	MaxTokens           int     `json:"maxTokens,omitempty" yaml:"maxTokens,omitempty"`                     // defaults to 8192
@@ -45,6 +45,7 @@ type AgentDefaults struct {
 type ProvidersConfig struct {
 	OpenRouter *ProviderConfig `json:"openrouter,omitempty" yaml:"openrouter,omitempty"`
 	Anthropic  *ProviderConfig `json:"anthropic,omitempty" yaml:"anthropic,omitempty"`
+	DeepSeek   *ProviderConfig `json:"deepseek,omitempty" yaml:"deepseek,omitempty"`
 }
 
 // ProviderConfig contains API credentials for a provider.

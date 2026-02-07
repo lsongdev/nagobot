@@ -102,6 +102,11 @@ func applyAgentOverrides(cfg *config.Config) {
 				cfg.Providers.Anthropic = &config.ProviderConfig{}
 			}
 			cfg.Providers.Anthropic.APIKey = apiKeyFlag
+		case "deepseek":
+			if cfg.Providers.DeepSeek == nil {
+				cfg.Providers.DeepSeek = &config.ProviderConfig{}
+			}
+			cfg.Providers.DeepSeek.APIKey = apiKeyFlag
 		}
 	}
 	if apiBaseFlag != "" {
@@ -116,6 +121,11 @@ func applyAgentOverrides(cfg *config.Config) {
 				cfg.Providers.Anthropic = &config.ProviderConfig{}
 			}
 			cfg.Providers.Anthropic.APIBase = apiBaseFlag
+		case "deepseek":
+			if cfg.Providers.DeepSeek == nil {
+				cfg.Providers.DeepSeek = &config.ProviderConfig{}
+			}
+			cfg.Providers.DeepSeek.APIBase = apiBaseFlag
 		}
 	}
 }

@@ -54,6 +54,8 @@ func (c *Config) providerConfigEnv() (*ProviderConfig, string, string, error) {
 		return c.Providers.OpenRouter, "OPENROUTER_API_KEY", "OPENROUTER_API_BASE", nil
 	case "anthropic":
 		return c.Providers.Anthropic, "ANTHROPIC_API_KEY", "ANTHROPIC_API_BASE", nil
+	case "deepseek":
+		return c.Providers.DeepSeek, "DEEPSEEK_API_KEY", "DEEPSEEK_API_BASE", nil
 	default:
 		return nil, "", "", errors.New("unknown provider: " + c.Agents.Defaults.Provider)
 	}

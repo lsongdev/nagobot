@@ -171,6 +171,8 @@ func providerConfigFor(cfg *config.Config, providerName string) *config.Provider
 		return cfg.Providers.OpenRouter
 	case "anthropic":
 		return cfg.Providers.Anthropic
+	case "deepseek":
+		return cfg.Providers.DeepSeek
 	}
 	return nil
 }
