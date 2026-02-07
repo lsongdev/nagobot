@@ -24,9 +24,11 @@ This project is evolving rapidly.
 
 `nagobot` enforces a model whitelist. Only validated provider/model pairs are supported:
 
+Default recommendation (unless you need a specific vendor): `provider=deepseek`, `modelType=deepseek-reasoner`.
+
+- `deepseek`: `deepseek-reasoner`, `deepseek-chat` (recommended default)
 - `openrouter`: `moonshotai/kimi-k2.5`
 - `anthropic`: `claude-sonnet-4-5`, `claude-opus-4-6`
-- `deepseek`: `deepseek-chat`, `deepseek-reasoner`
 - `moonshot-cn`: `kimi-k2.5`
 - `moonshot-global`: `kimi-k2.5`
 
@@ -51,6 +53,7 @@ go build -o nagobot .
 ```
 
 2. Edit config (default: `~/.nagobot/config.yaml`) and set your API key.
+If you don't have a provider preference, start with `deepseek-reasoner`.
 
 ### Provider Config Examples
 
@@ -71,26 +74,13 @@ providers:
 When using `moonshotai/kimi-k2.5`, route to OpenRouter's official `moonshot` provider.
 If routing falls back to other upstream providers, chain-of-thought and tool-calling can fail.
 
-DeepSeek recommended config (`deepseek-reasoner`):
+DeepSeek config example (recommended: `deepseek-reasoner`):
 
 ```yaml
 agents:
   defaults:
     provider: deepseek
     modelType: deepseek-reasoner
-
-providers:
-  deepseek:
-    apiKey: sk-xxx
-```
-
-DeepSeek alternative config:
-
-```yaml
-agents:
-  defaults:
-    provider: deepseek
-    modelType: deepseek-reasoner # or deepseek-chat
 
 providers:
   deepseek:
