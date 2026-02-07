@@ -193,6 +193,16 @@ func (t *Thread) runtimeTools() *tools.Registry {
 		runtimeTools = t.tools.Clone()
 	}
 
+	runtimeTools.Register(tools.NewHealthTool(t.workspace, func() tools.HealthRuntimeContext {
+		sessionPath, _ := t.sessionFilePath()
+		return tools.HealthRuntimeContext{
+			ThreadID:    t.id,
+			ThreadType:  string(t.kind),
+			SessionKey:  t.sessionKey,
+			SessionFile: sessionPath,
+		}
+	}))
+
 	if t.allowSpawn {
 		runtimeTools.Register(tools.NewSpawnThreadTool(t, t.agents))
 		runtimeTools.Register(tools.NewCheckThreadTool(t))

@@ -98,7 +98,7 @@ func (r *Registry) RegisterDefaultTools(workspace string, cfg DefaultToolsConfig
 	r.Register(&EditFileTool{workspace: workspace})
 	r.Register(&ListDirTool{workspace: workspace})
 	r.Register(&ExecTool{workspace: workspace, defaultTimeout: cfg.ExecTimeout, restrictToWorkspace: cfg.RestrictToWorkspace})
-	r.Register(&HealthTool{})
+	r.Register(NewHealthTool(workspace, nil))
 	r.Register(&WebSearchTool{defaultMaxResults: cfg.WebSearchMaxResults})
 	r.Register(&WebFetchTool{})
 }
