@@ -71,7 +71,20 @@ providers:
 When using `moonshotai/kimi-k2.5`, route to OpenRouter's official `moonshot` provider.
 If routing falls back to other upstream providers, chain-of-thought and tool-calling can fail.
 
-DeepSeek config example:
+DeepSeek recommended config (`deepseek-reasoner`):
+
+```yaml
+agents:
+  defaults:
+    provider: deepseek
+    modelType: deepseek-reasoner
+
+providers:
+  deepseek:
+    apiKey: sk-xxx
+```
+
+DeepSeek alternative config:
 
 ```yaml
 agents:
