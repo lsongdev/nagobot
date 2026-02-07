@@ -14,10 +14,20 @@ This project is evolving rapidly.
 
 ## Features
 
-- Providers: `openrouter`, `anthropic`
+- Providers: `openrouter`, `anthropic`, `deepseek`
 - Tools
 - Skills
 - Agent
+
+## Supported Providers and Model Types
+
+`nagobot` enforces a model whitelist. Only validated provider/model pairs are supported:
+
+- `openrouter`: `moonshotai/kimi-k2.5`
+- `anthropic`: `claude-sonnet-4-5`, `claude-opus-4-6`
+- `deepseek`: `deepseek-chat`, `deepseek-reasoner`
+
+For OpenRouter, support is currently **whitelist-only**. Only verified model routes are treated as supported. In particular, reasoning/chain-of-thought behavior and tool-calling are guaranteed only for validated routes.
 
 ## Requirements
 
@@ -51,10 +61,11 @@ You can use default model: **moonshotai/kimi-k2.5**
 
 ### Important: Kimi K2.5 + OpenRouter
 
-When using `moonshotai/kimi-k2.5`, tool-calling reliability is highly dependent on the upstream provider.
+When using `moonshotai/kimi-k2.5`, you must route to OpenRouter's official `moonshot` provider. If routing falls back to other upstream providers, chain-of-thought and tool-calling are not supported, and tool-calling can fail.
 
-- Recommended: in OpenRouter routing, allow only `moonshot` as provider for this model.
+- Required: in OpenRouter routing, allow only `moonshot` as provider for this model.
 - Alternative: set `agents.defaults.modelName` to an OpenRouter preset/model alias that already pins routing to Moonshot.
+- Runtime reminder: when nagobot detects `openrouter + kimi`, it prints a terminal warning about this requirement.
 
 Example:
 

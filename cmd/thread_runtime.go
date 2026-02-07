@@ -25,6 +25,7 @@ func buildThreadRuntime(cfg *config.Config, enableSessions bool) (*threadRuntime
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
+	printModelRoutingNotice(cfg)
 
 	workspace, err := cfg.WorkspacePath()
 	if err != nil {
