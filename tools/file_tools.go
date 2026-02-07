@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 )
 
@@ -63,6 +64,7 @@ func (t *ReadFileTool) Run(ctx context.Context, args json.RawMessage) string {
 
 	path := resolveToolPath(a.Path, t.workspace)
 	resolvedPath := absOrOriginal(path)
+	logger.Debug("read_file resolved path", "inputPath", a.Path, "resolvedPath", resolvedPath)
 
 	info, err := os.Stat(path)
 	if err != nil {
