@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/linanwx/nagobot/agent"
 	"github.com/linanwx/nagobot/internal/runtimecfg"
@@ -35,14 +36,15 @@ const (
 
 // Config contains shared dependencies for creating threads.
 type Config struct {
-	DefaultProvider provider.Provider
-	ProviderFactory ProviderFactory
-	Tools           *tools.Registry
-	Skills          *skills.Registry
-	Agents          *agent.AgentRegistry
-	Workspace       string
-	MaxIterations   int
-	Sessions        *SessionManager
+	DefaultProvider     provider.Provider
+	ProviderFactory     ProviderFactory
+	Tools               *tools.Registry
+	Skills              *skills.Registry
+	Agents              *agent.AgentRegistry
+	Workspace           string
+	ContextWindowTokens int
+	ContextWarnRatio    float64
+	Sessions            *SessionManager
 }
 
 // Manager keeps long-lived threads (typically keyed by session key).
@@ -103,7 +105,6 @@ type Thread struct {
 	skills    *skills.Registry
 	agents    *agent.AgentRegistry
 	workspace string
-	maxIter   int
 
 	sessionKey string
 	sink       Sink
@@ -192,11 +193,6 @@ func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind 
 		ag = agent.NewRawAgent("default", "You are a helpful AI assistant.")
 	}
 
-	maxIter := cfg.MaxIterations
-	if maxIter <= 0 {
-		maxIter = runtimecfg.AgentDefaultMaxToolIterations
-	}
-
 	agentRegistry := cfg.Agents
 	if agentRegistry == nil && cfg.Workspace != "" {
 		agentRegistry = agent.NewRegistry(cfg.Workspace)
@@ -212,7 +208,6 @@ func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind 
 		skills:     cfg.Skills,
 		agents:     agentRegistry,
 		workspace:  cfg.Workspace,
-		maxIter:    maxIter,
 		sessionKey: sessionKey,
 		sink:       sink,
 		allowSpawn: allowSpawn,
@@ -264,7 +259,49 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 
 	messages = append(messages, provider.UserMessage(userMessage))
 
-	runner := NewRunner(prov, runtimeTools, t.maxIter)
+	sessionEstimatedTokens := 0
+	if session != nil {
+		sessionEstimatedTokens = estimateMessagesTokens(session.Messages)
+	}
+	requestEstimatedTokens := estimateMessagesTokens(messages)
+	contextWindowTokens, contextWarnRatio := t.contextBudget()
+	logger.Debug(
+		"context estimate",
+		"threadID", t.id,
+		"threadType", t.kind,
+		"sessionKey", t.sessionKey,
+		"sessionEstimatedTokens", sessionEstimatedTokens,
+		"requestEstimatedTokens", requestEstimatedTokens,
+		"contextWindowTokens", contextWindowTokens,
+		"contextWarnRatio", contextWarnRatio,
+	)
+
+	if sessionPath, ok := t.sessionFilePath(); ok {
+		threshold := int(float64(contextWindowTokens) * contextWarnRatio)
+		if threshold <= 0 {
+			threshold = contextWindowTokens
+		}
+		if requestEstimatedTokens >= threshold {
+			usageRatio := float64(requestEstimatedTokens) / float64(contextWindowTokens)
+			notice := t.buildCompressionNotice(requestEstimatedTokens, contextWindowTokens, usageRatio, sessionPath)
+			userMessage = notice + "\n\n---\nUser message: " + userMessage
+			messages[len(messages)-1] = provider.UserMessage(userMessage)
+			requestEstimatedTokens = estimateMessagesTokens(messages)
+
+			logger.Info(
+				"context threshold reached, compression reminder injected",
+				"threadID", t.id,
+				"threadType", t.kind,
+				"sessionKey", t.sessionKey,
+				"sessionPath", sessionPath,
+				"requestEstimatedTokens", requestEstimatedTokens,
+				"contextWindowTokens", contextWindowTokens,
+				"thresholdTokens", threshold,
+			)
+		}
+	}
+
+	runner := NewRunner(prov, runtimeTools)
 	response, err := runner.RunWithMessages(ctx, messages)
 	if err != nil {
 		return "", err
@@ -273,10 +310,6 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	if session != nil {
 		session.Messages = append(session.Messages, provider.UserMessage(userMessage))
 		session.Messages = append(session.Messages, provider.AssistantMessage(response))
-
-		if len(session.Messages) > runtimecfg.AgentSessionMaxMessages {
-			session.Messages = session.Messages[len(session.Messages)-runtimecfg.AgentSessionMaxMessages:]
-		}
 
 		if saveErr := t.cfg.Sessions.Save(session); saveErr != nil {
 			logger.Warn("failed to save session", "key", t.sessionKey, "err", saveErr)
@@ -414,6 +447,88 @@ func (t *Thread) loadSession() *Session {
 		return nil
 	}
 	return session
+}
+
+func (t *Thread) sessionFilePath() (string, bool) {
+	if t.cfg == nil || t.cfg.Sessions == nil {
+		return "", false
+	}
+	key := strings.TrimSpace(t.sessionKey)
+	if key == "" {
+		return "", false
+	}
+	return t.cfg.Sessions.PathForKey(key), true
+}
+
+func (t *Thread) contextBudget() (tokens int, warnRatio float64) {
+	tokens = runtimecfg.AgentDefaultContextWindowTokens
+	warnRatio = runtimecfg.AgentDefaultContextWarnRatio
+	if t.cfg == nil {
+		return tokens, warnRatio
+	}
+
+	if t.cfg.ContextWindowTokens > 0 {
+		tokens = t.cfg.ContextWindowTokens
+	}
+	if t.cfg.ContextWarnRatio > 0 && t.cfg.ContextWarnRatio < 1 {
+		warnRatio = t.cfg.ContextWarnRatio
+	}
+	return tokens, warnRatio
+}
+
+func (t *Thread) buildCompressionNotice(requestTokens, contextWindowTokens int, usageRatio float64, sessionPath string) string {
+	return fmt.Sprintf(`[Context Pressure Notice]
+Estimated request tokens are high for this thread.
+
+- estimated_request_tokens: %d
+- configured_context_window_tokens: %d
+- estimated_usage_ratio: %.2f
+- session_key: %s
+- session_file: %s
+
+After this reply, prioritize loading skill "compress_context" in the next turn and follow it to compact the session file safely. Keep critical facts, decisions, IDs, and unresolved tasks.`, requestTokens, contextWindowTokens, usageRatio, t.sessionKey, sessionPath)
+}
+
+func estimateTextTokens(text string) int {
+	if text == "" {
+		return 0
+	}
+	chars := utf8.RuneCountInString(text)
+	tokens := chars / 4
+	if chars%4 != 0 {
+		tokens++
+	}
+	if tokens < 1 {
+		tokens = 1
+	}
+	return tokens
+}
+
+func estimateMessageTokens(message provider.Message) int {
+	tokens := 6 // Base per-message structure overhead.
+	tokens += estimateTextTokens(message.Role)
+	tokens += estimateTextTokens(message.Content)
+	tokens += estimateTextTokens(message.ReasoningContent)
+	tokens += estimateTextTokens(message.ToolCallID)
+	tokens += estimateTextTokens(message.Name)
+
+	for _, call := range message.ToolCalls {
+		tokens += 8 // Tool call structure overhead.
+		tokens += estimateTextTokens(call.ID)
+		tokens += estimateTextTokens(call.Type)
+		tokens += estimateTextTokens(call.Function.Name)
+		tokens += estimateTextTokens(call.Function.Arguments)
+	}
+
+	return tokens
+}
+
+func estimateMessagesTokens(messages []provider.Message) int {
+	total := 3 // Priming overhead.
+	for _, message := range messages {
+		total += estimateMessageTokens(message)
+	}
+	return total
 }
 
 func generateChildSessionKey(parentIdentity string) string {

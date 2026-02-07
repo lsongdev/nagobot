@@ -39,13 +39,14 @@ type AgentsConfig struct {
 
 // AgentDefaults contains default settings for agents.
 type AgentDefaults struct {
-	Provider          string  `json:"provider" yaml:"provider"`                                       // openrouter, anthropic
-	ModelType         string  `json:"modelType" yaml:"modelType"`                                     // moonshotai/kimi-k2.5, claude-sonnet-4-5
-	ModelName         string  `json:"modelName,omitempty" yaml:"modelName,omitempty"`                 // optional, defaults to modelType
-	Workspace         string  `json:"workspace,omitempty" yaml:"workspace,omitempty"`                 // defaults to ~/.nagobot/workspace
-	MaxTokens         int     `json:"maxTokens,omitempty" yaml:"maxTokens,omitempty"`                 // defaults to 8192
-	Temperature       float64 `json:"temperature,omitempty" yaml:"temperature,omitempty"`             // defaults to 0.95
-	MaxToolIterations int     `json:"maxToolIterations,omitempty" yaml:"maxToolIterations,omitempty"` // defaults to 100
+	Provider            string  `json:"provider" yaml:"provider"`                                           // openrouter, anthropic
+	ModelType           string  `json:"modelType" yaml:"modelType"`                                         // moonshotai/kimi-k2.5, claude-sonnet-4-5
+	ModelName           string  `json:"modelName,omitempty" yaml:"modelName,omitempty"`                     // optional, defaults to modelType
+	Workspace           string  `json:"workspace,omitempty" yaml:"workspace,omitempty"`                     // defaults to ~/.nagobot/workspace
+	MaxTokens           int     `json:"maxTokens,omitempty" yaml:"maxTokens,omitempty"`                     // defaults to 8192
+	Temperature         float64 `json:"temperature,omitempty" yaml:"temperature,omitempty"`                 // defaults to 0.95
+	ContextWindowTokens int     `json:"contextWindowTokens,omitempty" yaml:"contextWindowTokens,omitempty"` // defaults to 128000
+	ContextWarnRatio    float64 `json:"contextWarnRatio,omitempty" yaml:"contextWarnRatio,omitempty"`       // defaults to 0.8
 }
 
 // ProvidersConfig contains provider API configurations.
@@ -109,11 +110,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
 			Defaults: AgentDefaults{
-				Provider:          "openrouter",
-				ModelType:         "moonshotai/kimi-k2.5",
-				MaxTokens:         runtimecfg.AgentDefaultMaxTokens,
-				Temperature:       runtimecfg.AgentDefaultTemperature,
-				MaxToolIterations: runtimecfg.AgentDefaultMaxToolIterations,
+				Provider:            "openrouter",
+				ModelType:           "moonshotai/kimi-k2.5",
+				MaxTokens:           runtimecfg.AgentDefaultMaxTokens,
+				Temperature:         runtimecfg.AgentDefaultTemperature,
+				ContextWindowTokens: runtimecfg.AgentDefaultContextWindowTokens,
+				ContextWarnRatio:    runtimecfg.AgentDefaultContextWarnRatio,
 			},
 		},
 		Providers: ProvidersConfig{
@@ -287,6 +289,19 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) applyDefaults() {
+	if c.Agents.Defaults.MaxTokens <= 0 {
+		c.Agents.Defaults.MaxTokens = runtimecfg.AgentDefaultMaxTokens
+	}
+	if c.Agents.Defaults.Temperature == 0 {
+		c.Agents.Defaults.Temperature = runtimecfg.AgentDefaultTemperature
+	}
+	if c.Agents.Defaults.ContextWindowTokens <= 0 {
+		c.Agents.Defaults.ContextWindowTokens = runtimecfg.AgentDefaultContextWindowTokens
+	}
+	if c.Agents.Defaults.ContextWarnRatio <= 0 || c.Agents.Defaults.ContextWarnRatio >= 1 {
+		c.Agents.Defaults.ContextWarnRatio = runtimecfg.AgentDefaultContextWarnRatio
+	}
+
 	if c.Channels == nil {
 		c.Channels = &ChannelsConfig{}
 	}

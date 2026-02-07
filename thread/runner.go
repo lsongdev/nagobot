@@ -3,11 +3,9 @@ package thread
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 	"github.com/linanwx/nagobot/tools"
@@ -17,18 +15,13 @@ import (
 type Runner struct {
 	provider provider.Provider
 	tools    *tools.Registry
-	maxIter  int
 }
 
 // NewRunner creates a new Runner.
-func NewRunner(p provider.Provider, t *tools.Registry, maxIter int) *Runner {
-	if maxIter <= 0 {
-		maxIter = runtimecfg.AgentDefaultMaxToolIterations
-	}
+func NewRunner(p provider.Provider, t *tools.Registry) *Runner {
 	return &Runner{
 		provider: p,
 		tools:    t,
-		maxIter:  maxIter,
 	}
 }
 
@@ -36,7 +29,7 @@ func NewRunner(p provider.Provider, t *tools.Registry, maxIter int) *Runner {
 func (r *Runner) RunWithMessages(ctx context.Context, messages []provider.Message) (string, error) {
 	toolDefs := r.tools.Defs()
 
-	for i := 0; i < r.maxIter; i++ {
+	for {
 		resp, err := r.provider.Chat(ctx, &provider.Request{
 			Messages: messages,
 			Tools:    toolDefs,
@@ -59,6 +52,4 @@ func (r *Runner) RunWithMessages(ctx context.Context, messages []provider.Messag
 			messages = append(messages, provider.ToolResultMessage(tc.ID, tc.Function.Name, result))
 		}
 	}
-
-	return "", errors.New("max iterations exceeded")
 }

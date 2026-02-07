@@ -74,7 +74,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println("Settings:")
 	fmt.Printf("  Max Tokens: %d\n", cfg.Agents.Defaults.MaxTokens)
 	fmt.Printf("  Temperature: %.1f\n", cfg.Agents.Defaults.Temperature)
-	fmt.Printf("  Max Tool Iterations: %d\n", cfg.Agents.Defaults.MaxToolIterations)
+	fmt.Printf("  Context Window Tokens: %d\n", cfg.Agents.Defaults.ContextWindowTokens)
+	fmt.Printf("  Context Warn Ratio: %.2f\n", cfg.Agents.Defaults.ContextWarnRatio)
 
 	return nil
 }

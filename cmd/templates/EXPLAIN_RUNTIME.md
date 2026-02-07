@@ -1,10 +1,6 @@
 ---
 name: explain_runtime
 description: Explain how nagobot works by inspecting its codebase with gh when available.
-enabled: true
-requires:
-  - kind: cmd
-    value: gh
 ---
 # Runtime Explainer Skill
 

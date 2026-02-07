@@ -3,10 +3,10 @@ package runtimecfg
 import "time"
 
 const (
-	AgentDefaultMaxTokens         = 8192
-	AgentDefaultTemperature       = 0.95
-	AgentDefaultMaxToolIterations = 100
-	AgentSessionMaxMessages       = 40
+	AgentDefaultMaxTokens           = 8192
+	AgentDefaultTemperature         = 0.95
+	AgentDefaultContextWindowTokens = 128000
+	AgentDefaultContextWarnRatio    = 0.8
 )
 
 const (

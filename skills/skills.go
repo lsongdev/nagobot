@@ -5,7 +5,6 @@ package skills
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,21 +12,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Requirement represents a prerequisite for a skill.
-type Requirement struct {
-	Kind  string `yaml:"kind"`  // "cmd", "env", or "file"
-	Value string `yaml:"value"` // command name, env var name, or file path
-}
-
 // Skill represents a skill definition.
 type Skill struct {
-	Name        string        `yaml:"name"`
-	Description string        `yaml:"description"`
-	Prompt      string        `yaml:"prompt"`
-	Tags        []string      `yaml:"tags,omitempty"`
-	Examples    []string      `yaml:"examples,omitempty"`
-	Enabled     bool          `yaml:"enabled"`
-	Requires    []Requirement `yaml:"requires,omitempty"`
+	Name        string   `yaml:"name"`
+	Description string   `yaml:"description"`
+	Prompt      string   `yaml:"prompt"`
+	Tags        []string `yaml:"tags,omitempty"`
+	Examples    []string `yaml:"examples,omitempty"`
 }
 
 // Registry holds loaded skills.
@@ -67,19 +58,6 @@ func (r *Registry) List() []*Skill {
 		skills = append(skills, s)
 	}
 	return skills
-}
-
-// EnabledSkills returns all enabled skills.
-func (r *Registry) EnabledSkills() []*Skill {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	var enabled []*Skill
-	for _, s := range r.skills {
-		if s.Enabled {
-			enabled = append(enabled, s)
-		}
-	}
-	return enabled
 }
 
 // Names returns the names of all registered skills.
@@ -176,7 +154,6 @@ func loadYAMLSkill(path string) (*Skill, error) {
 		return nil, err
 	}
 
-	// Default to enabled if not specified
 	if skill.Name == "" {
 		// Use filename as name
 		skill.Name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
@@ -191,7 +168,6 @@ func loadYAMLSkill(path string) (*Skill, error) {
 // name: skill-name
 // description: Short description
 // tags: [tag1, tag2]
-// enabled: true
 // ---
 // # Skill Prompt Content
 // The rest of the markdown is the prompt.
@@ -208,9 +184,8 @@ func loadMarkdownSkill(path string) (*Skill, error) {
 		// No frontmatter, treat entire file as prompt
 		name := strings.TrimSuffix(filepath.Base(path), ".md")
 		return &Skill{
-			Name:    name,
-			Prompt:  content,
-			Enabled: true,
+			Name:   name,
+			Prompt: content,
 		}, nil
 	}
 
@@ -239,8 +214,8 @@ func loadMarkdownSkill(path string) (*Skill, error) {
 // BuildPromptSection builds a compact skill summary for the system prompt.
 // Full skill prompts are loaded on demand via the use_skill tool.
 func (r *Registry) BuildPromptSection() string {
-	enabled := r.EnabledSkills()
-	if len(enabled) == 0 {
+	list := r.List()
+	if len(list) == 0 {
 		return ""
 	}
 
@@ -248,7 +223,7 @@ func (r *Registry) BuildPromptSection() string {
 	sb.WriteString("## Skills\n\n")
 	sb.WriteString("Available skills (use the `use_skill` tool to load full instructions):\n\n")
 
-	for _, s := range enabled {
+	for _, s := range list {
 		sb.WriteString(fmt.Sprintf("- **%s**", s.Name))
 		if s.Description != "" {
 			sb.WriteString(fmt.Sprintf(": %s", s.Description))
@@ -264,41 +239,8 @@ func (r *Registry) GetSkillPrompt(name string) (string, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.skills[name]
-	if !ok || !s.Enabled {
+	if !ok {
 		return "", false
 	}
 	return s.Prompt, true
-}
-
-// CheckRequirements checks whether a skill's prerequisites are met.
-// Returns a list of unmet requirements (empty if all are satisfied).
-func (r *Registry) CheckRequirements(name string) (met bool, missing []string) {
-	r.mu.RLock()
-	s, ok := r.skills[name]
-	r.mu.RUnlock()
-	if !ok {
-		return false, []string{"skill not found"}
-	}
-	if len(s.Requires) == 0 {
-		return true, nil
-	}
-	for _, req := range s.Requires {
-		switch req.Kind {
-		case "cmd":
-			if _, err := exec.LookPath(req.Value); err != nil {
-				missing = append(missing, fmt.Sprintf("command not found: %s", req.Value))
-			}
-		case "env":
-			if os.Getenv(req.Value) == "" {
-				missing = append(missing, fmt.Sprintf("env var not set: %s", req.Value))
-			}
-		case "file":
-			if _, err := os.Stat(req.Value); err != nil {
-				missing = append(missing, fmt.Sprintf("file not found: %s", req.Value))
-			}
-		default:
-			missing = append(missing, fmt.Sprintf("unknown requirement kind: %s", req.Kind))
-		}
-	}
-	return len(missing) == 0, missing
 }

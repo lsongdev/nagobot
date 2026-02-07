@@ -94,3 +94,8 @@ func (m *SessionManager) sessionPath(key string) string {
 	safe = strings.ReplaceAll(safe, ":", "_")
 	return filepath.Join(m.sessionsDir, safe+".json")
 }
+
+// PathForKey returns the on-disk session file path for a session key.
+func (m *SessionManager) PathForKey(key string) string {
+	return m.sessionPath(key)
+}

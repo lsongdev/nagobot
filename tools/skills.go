@@ -4,15 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/linanwx/nagobot/provider"
 )
 
-// SkillProvider retrieves skill prompts and checks requirements.
+// SkillProvider retrieves skill prompts.
 type SkillProvider interface {
 	GetSkillPrompt(name string) (string, bool)
-	CheckRequirements(name string) (met bool, missing []string)
 }
 
 // UseSkillTool loads the full prompt for a named skill.
@@ -31,7 +29,7 @@ func (t *UseSkillTool) Def() provider.ToolDef {
 		Type: "function",
 		Function: provider.FunctionDef{
 			Name:        "use_skill",
-			Description: "Load the full instructions for a named skill. Checks prerequisites before loading. Use this when you need the detailed prompt for a skill listed in your system prompt.",
+			Description: "Load the full instructions for a named skill. Use this when you need the detailed prompt for a skill listed in your system prompt.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -60,14 +58,7 @@ func (t *UseSkillTool) Run(ctx context.Context, args json.RawMessage) string {
 
 	prompt, ok := t.provider.GetSkillPrompt(a.Name)
 	if !ok {
-		return fmt.Sprintf("Error: skill not found or disabled: %s", a.Name)
-	}
-
-	// Check prerequisites
-	met, missing := t.provider.CheckRequirements(a.Name)
-	if !met {
-		return fmt.Sprintf("Warning: skill '%s' has unmet prerequisites:\n- %s\n\nSkill instructions (may not work fully):\n\n%s",
-			a.Name, strings.Join(missing, "\n- "), prompt)
+		return fmt.Sprintf("Error: skill not found: %s", a.Name)
 	}
 
 	return prompt

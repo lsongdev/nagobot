@@ -57,11 +57,6 @@ func buildThreadRuntime(cfg *config.Config, enableSessions bool) (*threadRuntime
 
 	agentRegistry := agent.NewRegistry(workspace)
 
-	maxIter := cfg.Agents.Defaults.MaxToolIterations
-	if maxIter <= 0 {
-		maxIter = runtimecfg.AgentDefaultMaxToolIterations
-	}
-
 	var sessions *thread.SessionManager
 	if enableSessions {
 		configDir, err := config.ConfigDir()
@@ -76,14 +71,15 @@ func buildThreadRuntime(cfg *config.Config, enableSessions bool) (*threadRuntime
 	}
 
 	tcfg := &thread.Config{
-		DefaultProvider: defaultProvider,
-		ProviderFactory: providerFactory.Create,
-		Tools:           toolRegistry,
-		Skills:          skillRegistry,
-		Agents:          agentRegistry,
-		Workspace:       workspace,
-		MaxIterations:   maxIter,
-		Sessions:        sessions,
+		DefaultProvider:     defaultProvider,
+		ProviderFactory:     providerFactory.Create,
+		Tools:               toolRegistry,
+		Skills:              skillRegistry,
+		Agents:              agentRegistry,
+		Workspace:           workspace,
+		ContextWindowTokens: cfg.Agents.Defaults.ContextWindowTokens,
+		ContextWarnRatio:    cfg.Agents.Defaults.ContextWarnRatio,
+		Sessions:            sessions,
 	}
 
 	return &threadRuntime{
