@@ -21,6 +21,12 @@ func FormatText(s Snapshot) string {
 	b.WriteString(fmt.Sprintf("  OS/Arch: %s/%s\n", s.Runtime.OS, s.Runtime.Arch))
 	b.WriteString(fmt.Sprintf("  CPUs: %d\n", s.Runtime.CPUs))
 	b.WriteString(fmt.Sprintf("  Goroutines: %d\n", s.Goroutines))
+	b.WriteString("\nTime:\n")
+	b.WriteString(fmt.Sprintf("  Local: %s\n", s.Time.Local))
+	b.WriteString(fmt.Sprintf("  UTC: %s\n", s.Time.UTC))
+	b.WriteString(fmt.Sprintf("  Weekday: %s\n", s.Time.Weekday))
+	b.WriteString(fmt.Sprintf("  Timezone: %s (UTC%s)\n", s.Time.Timezone, s.Time.UTCOffset))
+	b.WriteString(fmt.Sprintf("  Unix: %d\n", s.Time.Unix))
 
 	if s.Paths != nil {
 		b.WriteString("\nPaths:\n")

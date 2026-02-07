@@ -1,6 +1,7 @@
 package health
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -9,9 +10,11 @@ import (
 // Collect returns a health snapshot for the current process.
 func Collect(opts Options) Snapshot {
 	opts = opts.normalize()
+	now := time.Now()
 
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
+	zoneName, zoneOffsetSeconds := now.Zone()
 
 	s := Snapshot{
 		Status:     "healthy",
@@ -28,7 +31,15 @@ func Collect(opts Options) Snapshot {
 			Arch:    runtime.GOARCH,
 			CPUs:    runtime.NumCPU(),
 		},
-		Timestamp: time.Now().Format(time.RFC3339),
+		Time: TimeInfo{
+			Local:     now.Format(time.RFC3339),
+			UTC:       now.UTC().Format(time.RFC3339),
+			Weekday:   now.Weekday().String(),
+			Timezone:  zoneName,
+			UTCOffset: formatUTCOffset(zoneOffsetSeconds),
+			Unix:      now.Unix(),
+		},
+		Timestamp: now.Format(time.RFC3339),
 	}
 
 	if opts.Workspace != "" || opts.SessionsRoot != "" || opts.SkillsRoot != "" {
@@ -63,4 +74,15 @@ func Collect(opts Options) Snapshot {
 	}
 
 	return s
+}
+
+func formatUTCOffset(offsetSeconds int) string {
+	sign := "+"
+	if offsetSeconds < 0 {
+		sign = "-"
+		offsetSeconds = -offsetSeconds
+	}
+	hours := offsetSeconds / 3600
+	minutes := (offsetSeconds % 3600) / 60
+	return fmt.Sprintf("%s%02d:%02d", sign, hours, minutes)
 }

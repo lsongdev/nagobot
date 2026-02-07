@@ -8,6 +8,7 @@ type Snapshot struct {
 	Goroutines    int            `json:"goroutines"`
 	Memory        MemoryInfo     `json:"memory"`
 	Runtime       RuntimeInfo    `json:"runtime"`
+	Time          TimeInfo       `json:"time"`
 	Timestamp     string         `json:"timestamp"`
 	Paths         *PathsInfo     `json:"paths,omitempty"`
 	Thread        *ThreadInfo    `json:"thread,omitempty"`
@@ -30,6 +31,16 @@ type RuntimeInfo struct {
 	OS      string `json:"os"`
 	Arch    string `json:"arch"`
 	CPUs    int    `json:"cpus"`
+}
+
+// TimeInfo contains current process time and timezone diagnostics.
+type TimeInfo struct {
+	Local     string `json:"local"`
+	UTC       string `json:"utc"`
+	Weekday   string `json:"weekday"`
+	Timezone  string `json:"timezone"`
+	UTCOffset string `json:"utcOffset"`
+	Unix      int64  `json:"unix"`
 }
 
 // Options controls optional health details.

@@ -43,7 +43,7 @@ func (t *HealthTool) Def() provider.ToolDef {
 		Type: "function",
 		Function: provider.FunctionDef{
 			Name:        "health",
-			Description: "Get runtime health information for this nagobot process, including paths, thread/session diagnostics, and optional workspace tree snapshot.",
+			Description: "Get runtime health information for this nagobot process, including paths, thread/session diagnostics, and workspace tree snapshot.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -52,18 +52,6 @@ func (t *HealthTool) Def() provider.ToolDef {
 						"description": "Optional output format: 'json' or 'text'. Defaults to 'json'.",
 						"enum":        []string{"json", "text"},
 					},
-					"include_tree": map[string]any{
-						"type":        "boolean",
-						"description": "When true, include a bounded workspace path tree.",
-					},
-					"tree_depth": map[string]any{
-						"type":        "integer",
-						"description": "Optional max depth for workspace tree (default: 2).",
-					},
-					"tree_max_entries": map[string]any{
-						"type":        "integer",
-						"description": "Optional max number of tree entries to return (default: 200).",
-					},
 				},
 			},
 		},
@@ -71,10 +59,7 @@ func (t *HealthTool) Def() provider.ToolDef {
 }
 
 type healthArgs struct {
-	Format         string `json:"format,omitempty"`
-	IncludeTree    bool   `json:"include_tree,omitempty"`
-	TreeDepth      int    `json:"tree_depth,omitempty"`
-	TreeMaxEntries int    `json:"tree_max_entries,omitempty"`
+	Format string `json:"format,omitempty"`
 }
 
 // Run executes the tool.
@@ -86,14 +71,10 @@ func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
 		}
 	}
 
-	depth := a.TreeDepth
-	if depth <= 0 {
-		depth = 2
-	}
-	maxEntries := a.TreeMaxEntries
-	if maxEntries <= 0 {
-		maxEntries = 200
-	}
+	const (
+		treeDepth      = 3
+		treeMaxEntries = 200
+	)
 
 	runtimeCtx := HealthRuntimeContext{}
 	if t.ctxFn != nil {
@@ -115,9 +96,9 @@ func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
 		ThreadType:     runtimeCtx.ThreadType,
 		SessionKey:     runtimeCtx.SessionKey,
 		SessionFile:    runtimeCtx.SessionFile,
-		IncludeTree:    a.IncludeTree,
-		TreeDepth:      depth,
-		TreeMaxEntries: maxEntries,
+		IncludeTree:    true,
+		TreeDepth:      treeDepth,
+		TreeMaxEntries: treeMaxEntries,
 	})
 	if strings.EqualFold(a.Format, "text") {
 		return healthsnap.FormatText(snapshot)
