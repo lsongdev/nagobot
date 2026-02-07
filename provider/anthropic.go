@@ -40,6 +40,42 @@ type AnthropicProvider struct {
 	client      anthropic.Client
 }
 
+const (
+	anthropicThinkingMinBudget     = 1024
+	anthropicThinkingDefaultBudget = 2048
+)
+
+func anthropicThinkingEnabled(modelType string) bool {
+	switch strings.TrimSpace(modelType) {
+	case "claude-sonnet-4-5", "claude-opus-4-6":
+		return true
+	default:
+		return false
+	}
+}
+
+func anthropicRequestTemperature(thinkingEnabled bool, configured float64) (float64, bool) {
+	if thinkingEnabled {
+		return 1, configured != 1
+	}
+	return configured, false
+}
+
+func anthropicThinkingBudget(maxTokens int) (int64, bool) {
+	if maxTokens <= anthropicThinkingMinBudget {
+		return 0, false
+	}
+
+	budget := anthropicThinkingDefaultBudget
+	if budget >= maxTokens {
+		budget = maxTokens - 1
+	}
+	if budget < anthropicThinkingMinBudget {
+		return 0, false
+	}
+	return int64(budget), true
+}
+
 // NewAnthropicProvider creates a new Anthropic provider.
 func NewAnthropicProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *AnthropicProvider {
 	if modelName == "" {
@@ -204,13 +240,14 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	}
 	inputChars := anthropicInputChars(systemPrompt, req.Messages)
 	tools := toAnthropicTools(req.Tools)
+	thinkingEnabled := anthropicThinkingEnabled(p.modelType)
 
 	logger.Debug(
 		"anthropic request",
 		"provider", "anthropic",
 		"modelType", p.modelType,
 		"modelName", p.modelName,
-		"thinkingEnabled", false,
+		"thinkingEnabled", thinkingEnabled,
 		"toolCount", len(req.Tools),
 		"inputChars", inputChars,
 	)
@@ -218,6 +255,16 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	maxTokens := p.maxTokens
 	if maxTokens <= 0 {
 		maxTokens = runtimecfg.AnthropicFallbackMaxTokens
+	}
+	if thinkingEnabled && maxTokens <= anthropicThinkingMinBudget {
+		logger.Warn(
+			"anthropic max_tokens adjusted for thinking constraints",
+			"provider", "anthropic",
+			"modelType", p.modelType,
+			"configuredMaxTokens", p.maxTokens,
+			"requestMaxTokens", anthropicThinkingDefaultBudget,
+		)
+		maxTokens = anthropicThinkingDefaultBudget
 	}
 
 	params := anthropic.MessageNewParams{
@@ -229,8 +276,30 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	if systemPrompt != "" {
 		params.System = []anthropic.TextBlockParam{{Text: systemPrompt}}
 	}
-	if p.temperature != 0 {
-		params.Temperature = anthropic.Float(p.temperature)
+	if thinkingEnabled {
+		if budget, ok := anthropicThinkingBudget(maxTokens); ok {
+			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+		} else {
+			logger.Warn(
+				"anthropic thinking disabled due to invalid max_tokens budget constraints",
+				"provider", "anthropic",
+				"modelType", p.modelType,
+				"requestMaxTokens", maxTokens,
+			)
+		}
+	}
+	requestTemp, forcedTemp := anthropicRequestTemperature(thinkingEnabled, p.temperature)
+	if requestTemp != 0 {
+		params.Temperature = anthropic.Float(requestTemp)
+	}
+	if forcedTemp {
+		logger.Warn(
+			"anthropic temperature adjusted for thinking constraints",
+			"provider", "anthropic",
+			"modelType", p.modelType,
+			"configuredTemperature", p.temperature,
+			"requestTemperature", requestTemp,
+		)
 	}
 
 	messageResp, err := p.client.Messages.New(ctx, params)
@@ -240,6 +309,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	}
 
 	var textParts []string
+	var reasoningParts []string
 	toolCalls := make([]ToolCall, 0)
 	for _, block := range messageResp.Content {
 		switch block.Type {
@@ -247,6 +317,12 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 			if block.Text != "" {
 				textParts = append(textParts, block.Text)
 			}
+		case "thinking":
+			if strings.TrimSpace(block.Thinking) != "" {
+				reasoningParts = append(reasoningParts, strings.TrimSpace(block.Thinking))
+			}
+		case "redacted_thinking":
+			reasoningParts = append(reasoningParts, "[redacted_thinking]")
 		case "tool_use":
 			toolCalls = append(toolCalls, ToolCall{
 				ID:   block.ID,
@@ -260,13 +336,14 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	}
 
 	content := strings.Join(textParts, "\n")
+	reasoningContent := strings.Join(reasoningParts, "\n")
 	logger.Debug(
 		"anthropic response",
 		"provider", "anthropic",
 		"modelType", p.modelType,
 		"modelName", p.modelName,
 		"finishReason", messageResp.StopReason,
-		"reasoningInResponse", false,
+		"reasoningInResponse", strings.TrimSpace(reasoningContent) != "",
 		"hasToolCalls", len(toolCalls) > 0,
 		"toolCallCount", len(toolCalls),
 		"promptTokens", messageResp.Usage.InputTokens,
@@ -277,8 +354,9 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *Request) (*Response, 
 	)
 
 	return &Response{
-		Content:   content,
-		ToolCalls: toolCalls,
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		ToolCalls:        toolCalls,
 		Usage: Usage{
 			PromptTokens:     int(messageResp.Usage.InputTokens),
 			CompletionTokens: int(messageResp.Usage.OutputTokens),
