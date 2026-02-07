@@ -16,6 +16,14 @@ import (
 
 // Run executes one thread turn.
 func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
+	t.runMu.Lock()
+	defer t.runMu.Unlock()
+
+	t.mu.Lock()
+	activeAgent := t.agent
+	activeSink := t.sink
+	t.mu.Unlock()
+
 	prov, err := t.resolveProvider()
 	if err != nil {
 		return "", err
@@ -24,8 +32,21 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	runtimeTools := t.runtimeTools()
 	skillsSection := t.buildSkillsSection()
 
-	if prefix := t.drainPendingResults(); prefix != "" {
-		userMessage = prefix + "---\nUser message: " + userMessage
+	hasRealUserMessage := strings.TrimSpace(userMessage) != ""
+	injectedUserMessages := []string{}
+	if hasRealUserMessage {
+		injectedUserMessages = append(injectedUserMessages, t.drainInjectQueue()...)
+	}
+
+	if pending := t.drainPendingResults(); pending != "" {
+		injectedUserMessages = append(injectedUserMessages, pending)
+		if !hasRealUserMessage {
+			injectedUserMessages = append(injectedUserMessages, "No new user message. Continue based on async child thread results above and send the user a concise update.")
+		}
+	}
+
+	if !hasRealUserMessage && len(injectedUserMessages) == 0 {
+		return "", nil
 	}
 
 	promptCtx := agent.PromptContext{
@@ -36,8 +57,8 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	}
 
 	systemPrompt := ""
-	if t.agent != nil && t.agent.BuildPrompt != nil {
-		systemPrompt = t.agent.BuildPrompt(promptCtx)
+	if activeAgent != nil && activeAgent.BuildPrompt != nil {
+		systemPrompt = activeAgent.BuildPrompt(promptCtx)
 	}
 	if strings.TrimSpace(systemPrompt) == "" {
 		systemPrompt = agent.NewRawAgent("fallback", "You are a helpful AI assistant.").BuildPrompt(promptCtx)
@@ -51,7 +72,21 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 		messages = append(messages, session.Messages...)
 	}
 
-	messages = append(messages, provider.UserMessage(userMessage))
+	turnUserMessages := make([]provider.Message, 0, len(injectedUserMessages)+1)
+	for _, injected := range injectedUserMessages {
+		msg := provider.UserMessage(injected)
+		messages = append(messages, msg)
+		turnUserMessages = append(turnUserMessages, msg)
+	}
+	if hasRealUserMessage {
+		msg := provider.UserMessage(userMessage)
+		messages = append(messages, msg)
+		turnUserMessages = append(turnUserMessages, msg)
+	}
+
+	if len(turnUserMessages) == 0 {
+		return "", nil
+	}
 
 	sessionEstimatedTokens := 0
 	if session != nil {
@@ -64,36 +99,38 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 		"threadID", t.id,
 		"threadType", t.kind,
 		"sessionKey", t.sessionKey,
+		"injectedUserMessages", len(injectedUserMessages),
+		"hasRealUserMessage", hasRealUserMessage,
 		"sessionEstimatedTokens", sessionEstimatedTokens,
 		"requestEstimatedTokens", requestEstimatedTokens,
 		"contextWindowTokens", contextWindowTokens,
 		"contextWarnRatio", contextWarnRatio,
 	)
 
-	if sessionPath, ok := t.sessionFilePath(); ok {
-		threshold := int(float64(contextWindowTokens) * contextWarnRatio)
-		if threshold <= 0 {
-			threshold = contextWindowTokens
-		}
-		if requestEstimatedTokens >= threshold {
-			usageRatio := float64(requestEstimatedTokens) / float64(contextWindowTokens)
-			notice := t.buildCompressionNotice(requestEstimatedTokens, contextWindowTokens, usageRatio, sessionPath)
-			userMessage = notice + "\n\n---\nUser message: " + userMessage
-			messages[len(messages)-1] = provider.UserMessage(userMessage)
-			requestEstimatedTokens = estimateMessagesTokens(messages)
-
-			logger.Info(
-				"context threshold reached, compression reminder injected",
-				"threadID", t.id,
-				"threadType", t.kind,
-				"sessionKey", t.sessionKey,
-				"sessionPath", sessionPath,
-				"requestEstimatedTokens", requestEstimatedTokens,
-				"contextWindowTokens", contextWindowTokens,
-				"thresholdTokens", threshold,
-			)
-		}
+	sessionPath, _ := t.sessionFilePath()
+	sessionSnapshot := []provider.Message{}
+	if session != nil && len(session.Messages) > 0 {
+		sessionSnapshot = make([]provider.Message, len(session.Messages))
+		copy(sessionSnapshot, session.Messages)
 	}
+	requestSnapshot := make([]provider.Message, len(messages))
+	copy(requestSnapshot, messages)
+	injectedSnapshot := make([]string, len(injectedUserMessages))
+	copy(injectedSnapshot, injectedUserMessages)
+	t.runHooks(HookContext{
+		ThreadID:               t.id,
+		Type:                   t.kind,
+		SessionKey:             t.sessionKey,
+		SessionPath:            sessionPath,
+		SessionMessages:        sessionSnapshot,
+		InjectedMessages:       injectedSnapshot,
+		UserMessage:            userMessage,
+		RequestMessages:        requestSnapshot,
+		SessionEstimatedTokens: sessionEstimatedTokens,
+		RequestEstimatedTokens: requestEstimatedTokens,
+		ContextWindowTokens:    contextWindowTokens,
+		ContextWarnRatio:       contextWarnRatio,
+	})
 
 	runner := NewRunner(prov, runtimeTools)
 	response, err := runner.RunWithMessages(ctx, messages)
@@ -102,16 +139,25 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	}
 
 	if session != nil {
-		session.Messages = append(session.Messages, provider.UserMessage(userMessage))
-		session.Messages = append(session.Messages, provider.AssistantMessage(response))
+		latestSession, reloadErr := t.reloadSessionForSave()
+		if reloadErr != nil {
+			logger.Warn(
+				"failed to reload session before save; skipping save to avoid overwriting external changes",
+				"key", t.sessionKey,
+				"err", reloadErr,
+			)
+		} else {
+			latestSession.Messages = append(latestSession.Messages, turnUserMessages...)
+			latestSession.Messages = append(latestSession.Messages, provider.AssistantMessage(response))
 
-		if saveErr := t.cfg.Sessions.Save(session); saveErr != nil {
-			logger.Warn("failed to save session", "key", t.sessionKey, "err", saveErr)
+			if saveErr := t.cfg.Sessions.Save(latestSession); saveErr != nil {
+				logger.Warn("failed to save session", "key", t.sessionKey, "err", saveErr)
+			}
 		}
 	}
 
-	if t.sink != nil {
-		if err := t.sink(ctx, response); err != nil {
+	if activeSink != nil && !isSinkSuppressed(ctx) {
+		if err := activeSink(ctx, response); err != nil {
 			return "", err
 		}
 	}
@@ -120,11 +166,15 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 }
 
 func (t *Thread) resolveProvider() (provider.Provider, error) {
-	if t.agent != nil && (strings.TrimSpace(t.agent.ProviderName) != "" || strings.TrimSpace(t.agent.ModelType) != "") {
+	t.mu.Lock()
+	activeAgent := t.agent
+	t.mu.Unlock()
+
+	if activeAgent != nil && (strings.TrimSpace(activeAgent.ProviderName) != "" || strings.TrimSpace(activeAgent.ModelType) != "") {
 		if t.cfg.ProviderFactory == nil {
 			return nil, fmt.Errorf("provider override requested but provider factory is not configured")
 		}
-		return t.cfg.ProviderFactory(t.agent.ProviderName, t.agent.ModelType)
+		return t.cfg.ProviderFactory(activeAgent.ProviderName, activeAgent.ModelType)
 	}
 
 	if t.provider == nil {
@@ -156,12 +206,19 @@ func (t *Thread) loadSession() *Session {
 		return nil
 	}
 
-	session, err := t.cfg.Sessions.Get(t.sessionKey)
+	session, err := t.cfg.Sessions.Reload(t.sessionKey)
 	if err != nil {
 		logger.Warn("failed to load session", "key", t.sessionKey, "err", err)
 		return nil
 	}
 	return session
+}
+
+func (t *Thread) reloadSessionForSave() (*Session, error) {
+	if t.cfg == nil || strings.TrimSpace(t.sessionKey) == "" || t.cfg.Sessions == nil {
+		return nil, fmt.Errorf("session manager unavailable")
+	}
+	return t.cfg.Sessions.Reload(t.sessionKey)
 }
 
 func (t *Thread) buildSkillsSection() string {

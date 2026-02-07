@@ -2,6 +2,7 @@ package thread
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,33 +48,27 @@ func (m *SessionManager) Get(key string) (*Session, error) {
 	}
 	m.mu.RUnlock()
 
-	path := m.sessionPath(key)
-	data, err := os.ReadFile(path)
-	if err == nil {
-		var s Session
-		if err := json.Unmarshal(data, &s); err == nil {
-			m.mu.Lock()
-			if cached, ok := m.cache[key]; ok {
-				m.mu.Unlock()
-				return cached, nil
-			}
-			m.cache[key] = &s
-			m.mu.Unlock()
-			return &s, nil
-		}
-	}
-
-	s := &Session{
-		Key:       key,
-		Messages:  []provider.Message{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	s, err := m.loadFromDisk(key)
+	if err != nil {
+		return nil, err
 	}
 	m.mu.Lock()
 	if cached, ok := m.cache[key]; ok {
 		m.mu.Unlock()
 		return cached, nil
 	}
+	m.cache[key] = s
+	m.mu.Unlock()
+	return s, nil
+}
+
+// Reload forces loading session state from disk and refreshes cache.
+func (m *SessionManager) Reload(key string) (*Session, error) {
+	s, err := m.loadFromDisk(key)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
 	m.cache[key] = s
 	m.mu.Unlock()
 	return s, nil
@@ -98,4 +93,39 @@ func (m *SessionManager) sessionPath(key string) string {
 // PathForKey returns the on-disk session file path for a session key.
 func (m *SessionManager) PathForKey(key string) string {
 	return m.sessionPath(key)
+}
+
+func (m *SessionManager) loadFromDisk(key string) (*Session, error) {
+	path := m.sessionPath(key)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			now := time.Now()
+			return &Session{
+				Key:       key,
+				Messages:  []provider.Message{},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		}
+		return nil, err
+	}
+
+	var s Session
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(s.Key) == "" {
+		s.Key = key
+	}
+	if s.Messages == nil {
+		s.Messages = []provider.Message{}
+	}
+	if s.CreatedAt.IsZero() {
+		s.CreatedAt = time.Now()
+	}
+	if s.UpdatedAt.IsZero() {
+		s.UpdatedAt = s.CreatedAt
+	}
+	return &s, nil
 }

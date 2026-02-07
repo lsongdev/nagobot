@@ -76,10 +76,12 @@ func (m *Manager) GetOrCreateChannel(sessionKey string, ag *agent.Agent, sink Si
 	defer m.mu.Unlock()
 
 	if t, ok := m.threads[sessionKey]; ok {
+		t.mu.Lock()
 		if ag != nil {
 			t.agent = ag
 		}
 		t.sink = sink
+		t.mu.Unlock()
 		return t
 	}
 
@@ -105,9 +107,13 @@ type Thread struct {
 	allowSpawn bool
 
 	mu             sync.Mutex
+	runMu          sync.Mutex
+	hooks          []ThreadHook
+	injectQueue    []string
 	children       map[string]*childState
 	childCounter   int64
 	pendingResults []pendingChildResult
+	autoRunning    bool
 }
 
 // PlainThread is the base execution thread.
@@ -192,7 +198,7 @@ func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind 
 		agentRegistry = agent.NewRegistry(cfg.Workspace)
 	}
 
-	return &Thread{
+	t := &Thread{
 		id:         fmt.Sprintf("thread-%d", time.Now().UnixNano()),
 		kind:       kind,
 		cfg:        cfg,
@@ -207,6 +213,9 @@ func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind 
 		allowSpawn: allowSpawn,
 		children:   make(map[string]*childState),
 	}
+
+	t.RegisterHook(t.contextPressureHook())
+	return t
 }
 
 // Type returns the runtime thread type.

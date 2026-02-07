@@ -56,6 +56,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	threadMgr := thread.NewManager(rt.threadConfig)
+	var manager *channel.Manager
 
 	handler := func(ctx context.Context, msg *channel.Message) (*channel.Response, error) {
 		logger.Debug("received message",
@@ -85,8 +86,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 			userMessage = fmt.Sprintf("[Media: %s]\n%s\n\n%s", mediaType, strings.Join(mediaParts, "\n"), msg.Text)
 		}
 
-		t := threadMgr.GetOrCreateChannel(sessionKey, rt.soulAgent, nil)
-		response, err := t.Run(ctx, userMessage)
+		t := threadMgr.GetOrCreateChannel(sessionKey, rt.soulAgent, buildThreadSink(manager, msg))
+		response, err := t.Run(thread.WithoutSink(ctx), userMessage)
 		if err != nil {
 			logger.Error("thread error", "err", err)
 			return &channel.Response{
@@ -101,7 +102,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}, nil
 	}
 
-	manager := channel.NewManager(handler)
+	manager = channel.NewManager(handler)
 
 	if serveCLI || (!serveTelegram && !serveAll) {
 		manager.Register(channel.NewCLIChannel(channel.CLIConfig{Prompt: "nagobot> "}))
@@ -199,4 +200,38 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func buildThreadSink(manager *channel.Manager, msg *channel.Message) thread.Sink {
+	if manager == nil || msg == nil {
+		return nil
+	}
+
+	channelName := channelNameFromID(msg.ChannelID)
+	if channelName == "" {
+		return nil
+	}
+
+	replyTo := strings.TrimSpace(msg.Metadata["chat_id"])
+	if replyTo == "" {
+		replyTo = strings.TrimSpace(msg.ReplyTo)
+	}
+
+	return func(ctx context.Context, response string) error {
+		if strings.TrimSpace(response) == "" {
+			return nil
+		}
+		return manager.SendTo(ctx, channelName, response, replyTo)
+	}
+}
+
+func channelNameFromID(channelID string) string {
+	channelID = strings.TrimSpace(channelID)
+	if channelID == "" {
+		return ""
+	}
+	if idx := strings.Index(channelID, ":"); idx > 0 {
+		return channelID[:idx]
+	}
+	return channelID
 }

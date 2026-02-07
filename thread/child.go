@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/linanwx/nagobot/agent"
+	"github.com/linanwx/nagobot/logger"
 )
 
 // SpawnChild spawns a child thread for delegated work.
@@ -18,7 +19,9 @@ func (t *Thread) SpawnChild(ctx context.Context, ag *agent.Agent, task, taskCont
 	}
 
 	if ag == nil {
+		t.mu.Lock()
 		ag = t.agent
+		t.mu.Unlock()
 	}
 	if ag == nil {
 		return "", fmt.Errorf("child agent is not configured")
@@ -60,7 +63,15 @@ func (t *Thread) SpawnChild(ctx context.Context, ag *agent.Agent, task, taskCont
 		state.err = err
 		close(state.done)
 		t.pendingResults = append(t.pendingResults, pendingChildResult{ID: childID, Result: result, Err: err})
+		shouldStartAuto := t.sink != nil && !t.autoRunning
+		if shouldStartAuto {
+			t.autoRunning = true
+		}
 		t.mu.Unlock()
+
+		if shouldStartAuto {
+			go t.runAsyncContinuations(ctx)
+		}
 	}()
 
 	return childID, nil
@@ -123,6 +134,38 @@ func (t *Thread) drainPendingResults() string {
 		sb.WriteString(fmt.Sprintf("- %s completed: %s\n", r.ID, r.Result))
 	}
 	return sb.String()
+}
+
+func (t *Thread) runAsyncContinuations(ctx context.Context) {
+	defer func() {
+		t.mu.Lock()
+		t.autoRunning = false
+		shouldRestart := t.sink != nil && len(t.pendingResults) > 0
+		if shouldRestart {
+			t.autoRunning = true
+		}
+		t.mu.Unlock()
+
+		if shouldRestart {
+			go t.runAsyncContinuations(ctx)
+		}
+	}()
+
+	for {
+		t.mu.Lock()
+		pendingCount := len(t.pendingResults)
+		hasSink := t.sink != nil
+		t.mu.Unlock()
+
+		if pendingCount == 0 || !hasSink {
+			return
+		}
+
+		if _, err := t.Run(WithSink(ctx), ""); err != nil {
+			logger.Warn("async child continuation failed", "threadID", t.id, "err", err)
+			return
+		}
+	}
 }
 
 func wrapAgentTaskPlaceholder(base *agent.Agent, task string) *agent.Agent {

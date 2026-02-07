@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/linanwx/nagobot/internal/runtimecfg"
+	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 )
 
@@ -89,4 +90,43 @@ func estimateMessagesTokens(messages []provider.Message) int {
 		total += estimateMessageTokens(message)
 	}
 	return total
+}
+
+func (t *Thread) contextPressureHook() ThreadHook {
+	return func(ctx HookContext) {
+		if strings.TrimSpace(ctx.SessionPath) == "" {
+			return
+		}
+		if ctx.ContextWindowTokens <= 0 {
+			return
+		}
+
+		threshold := int(float64(ctx.ContextWindowTokens) * ctx.ContextWarnRatio)
+		if threshold <= 0 {
+			threshold = ctx.ContextWindowTokens
+		}
+		if ctx.RequestEstimatedTokens < threshold {
+			return
+		}
+
+		usageRatio := float64(ctx.RequestEstimatedTokens) / float64(ctx.ContextWindowTokens)
+		notice := t.buildCompressionNotice(
+			ctx.RequestEstimatedTokens,
+			ctx.ContextWindowTokens,
+			usageRatio,
+			ctx.SessionPath,
+		)
+		t.EnqueueInjectedUserMessage(notice)
+
+		logger.Info(
+			"context threshold reached, compression reminder queued for next user turn",
+			"threadID", ctx.ThreadID,
+			"threadType", ctx.Type,
+			"sessionKey", ctx.SessionKey,
+			"sessionPath", ctx.SessionPath,
+			"requestEstimatedTokens", ctx.RequestEstimatedTokens,
+			"contextWindowTokens", ctx.ContextWindowTokens,
+			"thresholdTokens", threshold,
+		)
+	}
 }
