@@ -70,6 +70,11 @@ agents:
 ./nagobot serve
 ```
 
+Session files are stored under your workspace:
+
+- `<workspace>/sessions/main/session.json`
+- child threads: `<workspace>/sessions/<session>/threads/<date>/<thread-id>/session.json`
+
 ## Channels (`serve`)
 
 ```bash

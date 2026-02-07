@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/provider"
 )
 
@@ -27,9 +28,9 @@ type SessionManager struct {
 	mu          sync.RWMutex
 }
 
-// NewSessionManager creates a new session manager.
-func NewSessionManager(configDir string) (*SessionManager, error) {
-	sessionsDir := filepath.Join(configDir, "sessions")
+// NewSessionManager creates a new session manager rooted at workspace/sessions.
+func NewSessionManager(workspace string) (*SessionManager, error) {
+	sessionsDir := filepath.Join(workspace, runtimecfg.WorkspaceSessionsDirName)
 	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
 		return nil, err
 	}
@@ -41,6 +42,8 @@ func NewSessionManager(configDir string) (*SessionManager, error) {
 
 // Get returns a session by key, creating one if it doesn't exist.
 func (m *SessionManager) Get(key string) (*Session, error) {
+	key = normalizeSessionKey(key)
+
 	m.mu.RLock()
 	if s, ok := m.cache[key]; ok {
 		m.mu.RUnlock()
@@ -64,6 +67,8 @@ func (m *SessionManager) Get(key string) (*Session, error) {
 
 // Reload forces loading session state from disk and refreshes cache.
 func (m *SessionManager) Reload(key string) (*Session, error) {
+	key = normalizeSessionKey(key)
+
 	s, err := m.loadFromDisk(key)
 	if err != nil {
 		return nil, err
@@ -76,18 +81,35 @@ func (m *SessionManager) Reload(key string) (*Session, error) {
 
 // Save saves a session to disk.
 func (m *SessionManager) Save(s *Session) error {
+	s.Key = normalizeSessionKey(s.Key)
 	s.UpdatedAt = time.Now()
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(m.sessionPath(s.Key), data, 0644)
+	path := m.sessionPath(s.Key)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func (m *SessionManager) sessionPath(key string) string {
-	safe := strings.ReplaceAll(key, "/", "_")
-	safe = strings.ReplaceAll(safe, ":", "_")
-	return filepath.Join(m.sessionsDir, safe+".json")
+	key = normalizeSessionKey(key)
+	parts := strings.Split(key, ":")
+	cleanParts := make([]string, 0, len(parts)+1)
+	for _, p := range parts {
+		segment := sanitizePathSegment(p)
+		if segment == "" {
+			continue
+		}
+		cleanParts = append(cleanParts, segment)
+	}
+	if len(cleanParts) == 0 {
+		cleanParts = append(cleanParts, "main")
+	}
+	cleanParts = append(cleanParts, "session.json")
+	return filepath.Join(append([]string{m.sessionsDir}, cleanParts...)...)
 }
 
 // PathForKey returns the on-disk session file path for a session key.
@@ -96,6 +118,8 @@ func (m *SessionManager) PathForKey(key string) string {
 }
 
 func (m *SessionManager) loadFromDisk(key string) (*Session, error) {
+	key = normalizeSessionKey(key)
+
 	path := m.sessionPath(key)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -128,4 +152,42 @@ func (m *SessionManager) loadFromDisk(key string) (*Session, error) {
 		s.UpdatedAt = s.CreatedAt
 	}
 	return &s, nil
+}
+
+func normalizeSessionKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "main"
+	}
+	return key
+}
+
+func sanitizePathSegment(segment string) string {
+	segment = strings.TrimSpace(segment)
+	if segment == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	b.Grow(len(segment))
+	lastUnderscore := false
+	for _, r := range segment {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '-' || r == '_' || r == '.' {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	out := strings.Trim(b.String(), "._")
+	if out == "" {
+		return "_"
+	}
+	return out
 }

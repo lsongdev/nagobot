@@ -97,8 +97,13 @@ func writeTemplate(workspace, templateName, destName string) error {
 }
 
 func createBootstrapFiles(workspace string) error {
-	// Create agents/ and skills/ directories first so nested templates can be copied.
-	for _, dir := range []string{"agents", runtimecfg.WorkspaceSkillsDirName} {
+	// Create default workspace directories first.
+	for _, dir := range []string{
+		"agents",
+		runtimecfg.WorkspaceSkillsDirName,
+		filepath.Join(runtimecfg.WorkspaceSessionsDirName, "main"),
+		filepath.Join(runtimecfg.WorkspaceSessionsDirName, "cron"),
+	} {
 		if err := os.MkdirAll(filepath.Join(workspace, dir), 0755); err != nil {
 			return err
 		}

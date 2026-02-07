@@ -104,14 +104,27 @@ func (t *Thread) GetChild(childID string) (status, result string, err error) {
 func generateChildSessionKey(parentIdentity string) string {
 	parentIdentity = strings.TrimSpace(parentIdentity)
 	if parentIdentity == "" {
-		parentIdentity = "root"
+		parentIdentity = "main"
 	}
 
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("child:%s:%d", parentIdentity, time.Now().UnixNano())
+	now := time.Now().UTC()
+	datePart := now.Format("2006-01-02")
+	timePart := now.Format("20060102T150405Z")
+	if suffix := randomHex(4); suffix != "" {
+		return fmt.Sprintf("%s:threads:%s:%s-%s", parentIdentity, datePart, timePart, suffix)
 	}
-	return fmt.Sprintf("child:%s:%s", parentIdentity, hex.EncodeToString(buf))
+	return fmt.Sprintf("%s:threads:%s:%d", parentIdentity, datePart, now.UnixNano())
+}
+
+func randomHex(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(buf)
 }
 
 func (t *Thread) drainPendingResults() string {

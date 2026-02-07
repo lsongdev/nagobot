@@ -1,37 +1,35 @@
 ---
 name: compress_context
-description: Compress a session JSON file safely when context usage is high, without losing critical state.
+description: Compress session context with simple backup and atomic replace.
 ---
 # Context Compression Skill
 
 Required workflow:
-1. Read the session file path provided in the runtime notice.
-2. Count file lines first and report the current line count.
-3. Generate a compressed session JSON that preserves:
-   - top-level fields (`key`, `messages`, `created_at`, `updated_at`)
-   - unresolved tasks, decisions, IDs, constraints, pending action items
-   - enough recent conversational continuity
-4. Write the compressed output to a temporary file path first.
-5. Write and run a small validation script that checks:
+1. Determine `session_file`:
+   - First choice: use the runtime notice value.
+   - Fallback: `<workspace>/sessions/main/session.json` (`<workspace>` means the configured runtime workspace root).
+   - If neither exists, stop and ask for an explicit path.
+2. Count lines and read content if needed.
+3. Set `session_dir = dirname(session_file)`.
+4. Generate `timestamp` in format `<unix>_<local-time>`, where:
+   - `<unix>` is Unix seconds (for global monotonic ordering),
+   - `<local-time>` is local timezone time `YYYYMMDDTHHMMSS±ZZZZ` (for readability),
+   - example: `1738926930_20260207T191530+0800`.
+5. Backup original file to `<session_dir>/history/<timestamp>.json`.
+6. Write compressed result to `<session_dir>/.tmp/session.next.json`.
+7. Validate temp file:
    - valid JSON
-   - required top-level fields exist
+   - has `key`, `messages`, `created_at`, `updated_at`
    - `messages` is an array
-6. Only after validation passes, replace the original session file atomically.
+8. If validation passes, atomically replace `<session_dir>/session.json` with `session.next.json`.
+9. If replacement fails, delete leftover `session.next.json`.
+10. Continue the original task.
 
-Example compressed session JSON:
-
-```json
-{
-  "key": "main",
-  "messages": [
-    {
-      "role": "user",
-      "content": "[Context Summary]\nThis is a guidance template. The real summary must use the same language as the original conversation and should usually be 1000-3000 characters based on context complexity.\nInclude only high-value context:\n- User preferences and hard constraints\n- Active goals, decisions, and current plan\n- Unresolved issues and pending actions\n- Critical IDs, paths, commands, and references\nRemove repetitive chatter and low-signal turns."
-    }
-  ],
-  "created_at": "2026-02-07T00:00:00Z",
-  "updated_at": "2026-02-07T00:10:00Z"
-}
-```
-
-7. After replacing the file, compression is complete. Continue your original task.
+Compression content guidance:
+- Keep top-level structure unchanged.
+- Summarize in the same language as the original conversation.
+- Preserve high-value context only:
+  - user preferences and constraints
+  - active goals and decisions
+  - unresolved issues and pending actions
+  - critical IDs, paths, commands, and references

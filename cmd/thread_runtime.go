@@ -59,14 +59,9 @@ func buildThreadRuntime(cfg *config.Config, enableSessions bool) (*threadRuntime
 
 	var sessions *thread.SessionManager
 	if enableSessions {
-		configDir, err := config.ConfigDir()
+		sessions, err = thread.NewSessionManager(workspace)
 		if err != nil {
 			logger.Warn("session manager unavailable", "err", err)
-		} else {
-			sessions, err = thread.NewSessionManager(configDir)
-			if err != nil {
-				logger.Warn("session manager unavailable", "err", err)
-			}
 		}
 	}
 

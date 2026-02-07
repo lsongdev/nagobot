@@ -39,5 +39,6 @@ const (
 )
 
 const (
-	WorkspaceSkillsDirName = "skills"
+	WorkspaceSkillsDirName   = "skills"
+	WorkspaceSessionsDirName = "sessions"
 )
