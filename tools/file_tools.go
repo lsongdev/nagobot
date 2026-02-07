@@ -112,6 +112,10 @@ func (t *WriteFileTool) Def() provider.ToolDef {
 						"type":        "string",
 						"description": "The content to write to the file.",
 					},
+					"append": map[string]any{
+						"type":        "boolean",
+						"description": "When true, append content to the file instead of overwriting it.",
+					},
 				},
 				"required": []string{"path", "content"},
 			},
@@ -123,6 +127,7 @@ func (t *WriteFileTool) Def() provider.ToolDef {
 type writeFileArgs struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
+	Append  bool   `json:"append,omitempty"`
 }
 
 // Run executes the tool.
@@ -142,7 +147,20 @@ func (t *WriteFileTool) Run(ctx context.Context, args json.RawMessage) string {
 		return fmt.Sprintf("Error: failed to create parent directory: %s: %v", formatResolvedPath(dir, resolvedDir), err)
 	}
 
-	// Write file
+	if a.Append {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Sprintf("Error: failed to open file for append: %s: %v", formatResolvedPath(a.Path, resolvedPath), err)
+		}
+		defer f.Close()
+
+		if _, err := f.WriteString(a.Content); err != nil {
+			return fmt.Sprintf("Error: failed to append file: %s: %v", formatResolvedPath(a.Path, resolvedPath), err)
+		}
+		return fmt.Sprintf("Successfully appended %d bytes to %s", len(a.Content), formatResolvedPath(a.Path, resolvedPath))
+	}
+
+	// Write file (overwrite)
 	if err := os.WriteFile(path, []byte(a.Content), 0644); err != nil {
 		return fmt.Sprintf("Error: failed to write file: %s: %v", formatResolvedPath(a.Path, resolvedPath), err)
 	}
@@ -224,81 +242,4 @@ func (t *EditFileTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	return fmt.Sprintf("Successfully edited %s", formatResolvedPath(a.Path, resolvedPath))
-}
-
-// ListDirTool lists the contents of a directory.
-type ListDirTool struct {
-	workspace string
-}
-
-// Def returns the tool definition.
-func (t *ListDirTool) Def() provider.ToolDef {
-	return provider.ToolDef{
-		Type: "function",
-		Function: provider.FunctionDef{
-			Name:        "list_dir",
-			Description: "List the contents of a directory. Relative paths are resolved from workspace root.",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path": map[string]any{
-						"type":        "string",
-						"description": "The path to the directory to list.",
-					},
-				},
-				"required": []string{"path"},
-			},
-		},
-	}
-}
-
-// listDirArgs are the arguments for list_dir.
-type listDirArgs struct {
-	Path string `json:"path"`
-}
-
-// Run executes the tool.
-func (t *ListDirTool) Run(ctx context.Context, args json.RawMessage) string {
-	var a listDirArgs
-	if errMsg := parseArgs(args, &a); errMsg != "" {
-		return errMsg
-	}
-	if strings.TrimSpace(a.Path) == "" {
-		return "Error: path is required"
-	}
-
-	path := resolveToolPath(a.Path, t.workspace)
-	resolvedPath := absOrOriginal(path)
-
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Sprintf("Error: directory not found: %s", formatResolvedPath(a.Path, resolvedPath))
-		}
-		return fmt.Sprintf("Error: failed to stat directory: %s: %v", formatResolvedPath(a.Path, resolvedPath), err)
-	}
-
-	if !info.IsDir() {
-		return fmt.Sprintf("Error: path is a file, not a directory: %s", formatResolvedPath(a.Path, resolvedPath))
-	}
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return fmt.Sprintf("Error: failed to read directory: %s: %v", formatResolvedPath(a.Path, resolvedPath), err)
-	}
-
-	var lines []string
-	for _, entry := range entries {
-		prefix := "📄 "
-		if entry.IsDir() {
-			prefix = "📁 "
-		}
-		lines = append(lines, prefix+entry.Name())
-	}
-
-	if len(lines) == 0 {
-		return "(empty directory)"
-	}
-
-	return strings.Join(lines, "\n")
 }
