@@ -1,6 +1,6 @@
 ---
 name: manage_cron
-description: Use this skill when you need to inspect, read, create, update, or delete scheduled cron jobs by editing cron.yaml directly in the workspace.
+description: Use this skill when you need to inspect, read, create, update, or delete scheduled cron jobs, including recurring and one-time tasks.
 ---
 # Manage Cron via File Editing
 
@@ -44,6 +44,7 @@ For `kind=cron`, use standard 5-field cron:
 
 1. Check whether `<workspace>/cron.yaml` exists, and create it if it does not.
 2. Edit cron jobs with any suitable tools; `creator_session_key` can be obtained from `health`.
+   Using the `echo` command can quickly append new entries.
 3. Call `health` to confirm the cron job appears in runtime status; if it does not, investigate and fix it.
 
 ## Examples

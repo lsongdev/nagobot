@@ -29,7 +29,7 @@ func (t *UseSkillTool) Def() provider.ToolDef {
 		Type: "function",
 		Function: provider.FunctionDef{
 			Name:        "use_skill",
-			Description: "Load the full instructions for a named skill. Use this when you need the detailed prompt for a skill listed in your system prompt.",
+			Description: "Load the instructions for a named skill. Use this when you need the guidance for a skill listed in your system prompt.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
