@@ -74,6 +74,20 @@ providers:
     # apiBase: https://api.deepseek.com # optional
 ```
 
+Anthropic config example:
+
+```yaml
+agents:
+  defaults:
+    provider: anthropic
+    modelType: claude-opus-4-6 # or claude-sonnet-4-5
+
+providers:
+  anthropic:
+    apiKey: sk-ant-xxx
+    # apiBase: https://api.anthropic.com # optional
+```
+
 ### Important: Kimi K2.5 + OpenRouter
 
 When using `moonshotai/kimi-k2.5`, you must route to OpenRouter's official `moonshot` provider. If routing falls back to other upstream providers, chain-of-thought and tool-calling are not supported, and tool-calling can fail.
