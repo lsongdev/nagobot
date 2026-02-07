@@ -30,6 +30,7 @@ func startCronRuntime(ctx context.Context, rt *threadRuntime, threadMgr *thread.
 		}
 		ag = thread.WrapAgentTaskPlaceholder(ag, task)
 		t := thread.NewChannel(rt.threadConfig, ag, buildCronSessionKey(job), nil)
+		t.EnqueueInjectedUserMessage(buildCronStartMessage(job))
 		result, runErr := t.Run(ctx, task)
 
 		if job != nil && !job.Silent && runErr == nil && strings.TrimSpace(result) != "" {
@@ -91,4 +92,29 @@ func buildCronWakeMessage(job *cronpkg.Job, result string) string {
 		jobID = strings.TrimSpace(job.ID)
 	}
 	return fmt.Sprintf("[Cron job completed]\n- id: %s\n- result:\n%s", jobID, strings.TrimSpace(result))
+}
+
+func buildCronStartMessage(job *cronpkg.Job) string {
+	if job == nil {
+		return "[Cron wake notice]\nReason: scheduled cron task triggered."
+	}
+
+	atTime := ""
+	if !job.AtTime.IsZero() {
+		atTime = job.AtTime.UTC().Format(time.RFC3339)
+	}
+
+	return fmt.Sprintf(
+		"[Cron wake notice]\nReason: scheduled cron task triggered.\nRaw job config:\n- id: %s\n- kind: %s\n- expr: %s\n- at_time: %s\n- task: %s\n- agent: %s\n- creator_session_key: %s\n- silent: %t\n- enabled: %t\n- created_at: %s",
+		strings.TrimSpace(job.ID),
+		strings.TrimSpace(job.Kind),
+		strings.TrimSpace(job.Expr),
+		atTime,
+		strings.TrimSpace(job.Task),
+		strings.TrimSpace(job.Agent),
+		strings.TrimSpace(job.CreatorSessionKey),
+		job.Silent,
+		job.Enabled,
+		job.CreatedAt.UTC().Format(time.RFC3339),
+	)
 }
