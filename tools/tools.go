@@ -82,7 +82,7 @@ func (r *Registry) Defs() []provider.ToolDef {
 // Run executes a tool by name.
 func (r *Registry) Run(ctx context.Context, name string, args json.RawMessage) string {
 	start := time.Now()
-	logger.Debug("tool call", "tool", name)
+	logger.Debug("tool call", "tool", name, "args", string(args))
 
 	t, ok := r.tools[name]
 	if !ok {
