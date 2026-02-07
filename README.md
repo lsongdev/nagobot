@@ -1,7 +1,7 @@
 # nagobot
 
 <p align="center">
-  <img src="img/head.png" alt="nagobot head" width="320" />
+  <img src="img/head.png" alt="nagobot head" width="120" />
 </p>
 
 `nagobot` is a ultra light AI assistant built with Go.
