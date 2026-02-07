@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	robfigcron "github.com/robfig/cron/v3"
+	gocron "github.com/go-co-op/gocron/v2"
 )
 
 const (
@@ -29,7 +29,7 @@ type Job struct {
 type ThreadFactory func(job *Job) (string, error)
 
 type Scheduler struct {
-	cron      *robfigcron.Cron
+	cron      gocron.Scheduler
 	factory   ThreadFactory
 	jobs      map[string]Job
 	cancels   map[string]func()
@@ -38,8 +38,9 @@ type Scheduler struct {
 }
 
 func NewScheduler(storePath string, factory ThreadFactory) *Scheduler {
+	sch, _ := gocron.NewScheduler()
 	return &Scheduler{
-		cron:      robfigcron.New(),
+		cron:      sch,
 		factory:   factory,
 		jobs:      make(map[string]Job),
 		cancels:   make(map[string]func()),

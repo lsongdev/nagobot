@@ -49,13 +49,18 @@ func (s *Scheduler) Load() error {
 	return nil
 }
 
-func (s *Scheduler) Start() { s.cron.Start() }
+func (s *Scheduler) Start() {
+	if s.cron != nil {
+		s.cron.Start()
+	}
+}
 
 func (s *Scheduler) Stop() {
-	done := s.cron.Stop().Done()
-	<-done
-
 	s.mu.Lock()
 	s.resetLocked()
 	s.mu.Unlock()
+
+	if s.cron != nil {
+		_ = s.cron.Shutdown()
+	}
 }
