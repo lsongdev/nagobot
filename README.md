@@ -1,5 +1,7 @@
 # nagobot
 
+Tired of endless configuration and unstable runtime? Try nagobot.
+
 <p align="center">
   <img src="img/head.png" alt="nagobot head" width="120" />
 </p>
@@ -69,11 +71,6 @@ agents:
 ```bash
 ./nagobot serve
 ```
-
-Session files are stored under your workspace:
-
-- `<workspace>/sessions/main/session.json`
-- child threads: `<workspace>/sessions/<session>/threads/<date>/<thread-id>/session.json`
 
 ## Channels (`serve`)
 
