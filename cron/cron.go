@@ -66,50 +66,25 @@ func (s *Scheduler) Load() error {
 	s.resetSchedulesLocked()
 	s.jobs = make(map[string]*Job)
 
-	if strings.TrimSpace(s.storePath) == "" {
-		return nil
-	}
-
-	data, err := os.ReadFile(s.storePath)
+	list, err := s.readStoreJobsLocked()
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
 		return err
 	}
 
-	var list []Job
-	if err := json.Unmarshal(data, &list); err != nil {
-		return err
-	}
-
-	removedExpired := false
+	now := time.Now().UTC()
+	removedExpiredAt := false
 	for _, raw := range list {
 		job := normalizeJob(raw)
-		if strings.TrimSpace(job.ID) == "" || strings.TrimSpace(job.Task) == "" {
-			continue
-		}
-
-		switch job.Kind {
-		case JobKindCron:
-			if strings.TrimSpace(job.Expr) == "" {
-				continue
+		ok, expiredAt := validateStoredJob(job, now)
+		if !ok {
+			if expiredAt {
+				removedExpiredAt = true
 			}
-		case JobKindAt:
-			if job.AtTime.IsZero() {
-				continue
-			}
-			if job.Enabled && !job.AtTime.After(time.Now().UTC()) {
-				removedExpired = true
-				continue
-			}
-		default:
 			continue
 		}
 
 		j := cloneJob(job)
 		s.jobs[j.ID] = j
-
 		if !j.Enabled {
 			continue
 		}
@@ -118,7 +93,7 @@ func (s *Scheduler) Load() error {
 		}
 	}
 
-	if removedExpired {
+	if removedExpiredAt {
 		if err := s.saveLocked(); err != nil {
 			logger.Warn("failed to save cron store after pruning expired at jobs", "err", err)
 		}
@@ -144,17 +119,8 @@ func (s *Scheduler) Add(id, expr, task, agent string) error {
 	task = strings.TrimSpace(task)
 	agent = strings.TrimSpace(agent)
 
-	if id == "" {
-		return fmt.Errorf("id is required")
-	}
 	if expr == "" {
 		return fmt.Errorf("expr is required")
-	}
-	if task == "" {
-		return fmt.Errorf("task is required")
-	}
-	if _, exists := s.jobs[id]; exists {
-		return fmt.Errorf("job already exists: %s", id)
 	}
 
 	job := &Job{
@@ -166,18 +132,10 @@ func (s *Scheduler) Add(id, expr, task, agent string) error {
 		Enabled:   true,
 		CreatedAt: time.Now().UTC(),
 	}
-
-	if err := s.scheduleLocked(job); err != nil {
+	if err := s.validateNewJobLocked(job); err != nil {
 		return err
 	}
-
-	s.jobs[job.ID] = cloneJob(*job)
-	if err := s.saveLocked(); err != nil {
-		s.unscheduleLocked(job.ID)
-		delete(s.jobs, job.ID)
-		return err
-	}
-	return nil
+	return s.addJobLocked(job)
 }
 
 // AddAt validates, schedules, and persists a one-shot job.
@@ -185,48 +143,22 @@ func (s *Scheduler) AddAt(id string, atTime time.Time, task, agent string) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id = strings.TrimSpace(id)
-	task = strings.TrimSpace(task)
-	agent = strings.TrimSpace(agent)
-	atTime = atTime.UTC()
-
-	if id == "" {
-		return fmt.Errorf("id is required")
-	}
-	if task == "" {
-		return fmt.Errorf("task is required")
-	}
-	if atTime.IsZero() {
-		return fmt.Errorf("at_time is required")
-	}
-	if !atTime.After(time.Now().UTC()) {
-		return fmt.Errorf("at_time must be in the future")
-	}
-	if _, exists := s.jobs[id]; exists {
-		return fmt.Errorf("job already exists: %s", id)
-	}
-
 	job := &Job{
-		ID:        id,
+		ID:        strings.TrimSpace(id),
 		Kind:      JobKindAt,
-		AtTime:    atTime,
-		Task:      task,
-		Agent:     agent,
+		AtTime:    atTime.UTC(),
+		Task:      strings.TrimSpace(task),
+		Agent:     strings.TrimSpace(agent),
 		Enabled:   true,
 		CreatedAt: time.Now().UTC(),
 	}
-
-	if err := s.scheduleLocked(job); err != nil {
+	if err := s.validateNewJobLocked(job); err != nil {
 		return err
 	}
-
-	s.jobs[job.ID] = cloneJob(*job)
-	if err := s.saveLocked(); err != nil {
-		s.unscheduleLocked(job.ID)
-		delete(s.jobs, job.ID)
-		return err
+	if !job.AtTime.After(time.Now().UTC()) {
+		return fmt.Errorf("at_time must be in the future")
 	}
-	return nil
+	return s.addJobLocked(job)
 }
 
 // Remove unschedules and removes a job.
@@ -278,6 +210,70 @@ func (s *Scheduler) Stop() {
 	s.mu.Unlock()
 }
 
+func (s *Scheduler) addJobLocked(job *Job) error {
+	if err := s.scheduleLocked(job); err != nil {
+		return err
+	}
+
+	s.jobs[job.ID] = cloneJob(*job)
+	if err := s.saveLocked(); err != nil {
+		s.unscheduleLocked(job.ID)
+		delete(s.jobs, job.ID)
+		return err
+	}
+	return nil
+}
+
+func (s *Scheduler) validateNewJobLocked(job *Job) error {
+	if job == nil {
+		return fmt.Errorf("job is nil")
+	}
+	if job.ID == "" {
+		return fmt.Errorf("id is required")
+	}
+	if job.Task == "" {
+		return fmt.Errorf("task is required")
+	}
+	if _, exists := s.jobs[job.ID]; exists {
+		return fmt.Errorf("job already exists: %s", job.ID)
+	}
+
+	switch job.Kind {
+	case JobKindCron:
+		if job.Expr == "" {
+			return fmt.Errorf("expr is required")
+		}
+	case JobKindAt:
+		if job.AtTime.IsZero() {
+			return fmt.Errorf("at_time is required")
+		}
+	default:
+		return fmt.Errorf("unsupported job kind: %s", job.Kind)
+	}
+
+	return nil
+}
+
+func (s *Scheduler) readStoreJobsLocked() ([]Job, error) {
+	if strings.TrimSpace(s.storePath) == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(s.storePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var list []Job
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 func (s *Scheduler) saveLocked() error {
 	if strings.TrimSpace(s.storePath) == "" {
 		return nil
@@ -326,10 +322,6 @@ func (s *Scheduler) scheduleLocked(job *Job) error {
 }
 
 func (s *Scheduler) scheduleCronLocked(job *Job) error {
-	if strings.TrimSpace(job.Expr) == "" {
-		return fmt.Errorf("job expr is required")
-	}
-
 	entryID, err := s.cron.AddFunc(job.Expr, func() {
 		if s.factory == nil {
 			return
@@ -347,9 +339,6 @@ func (s *Scheduler) scheduleCronLocked(job *Job) error {
 }
 
 func (s *Scheduler) scheduleAtLocked(job *Job) error {
-	if job.AtTime.IsZero() {
-		return fmt.Errorf("job at_time is required")
-	}
 	delay := time.Until(job.AtTime)
 	if delay <= 0 {
 		return fmt.Errorf("at_time must be in the future")
@@ -369,10 +358,7 @@ func (s *Scheduler) scheduleAtLocked(job *Job) error {
 		if current, ok := s.jobs[payload.ID]; ok && current != nil && current.Kind == JobKindAt {
 			delete(s.jobs, payload.ID)
 		}
-		if timer, ok := s.timers[payload.ID]; ok {
-			timer.Stop()
-			delete(s.timers, payload.ID)
-		}
+		s.unscheduleLocked(payload.ID)
 		if err := s.saveLocked(); err != nil {
 			logger.Warn("failed to persist cron store after at job execution", "id", payload.ID, "err", err)
 		}
@@ -404,13 +390,39 @@ func (s *Scheduler) resetSchedulesLocked() {
 	s.timers = make(map[string]*time.Timer)
 }
 
+func validateStoredJob(job Job, now time.Time) (ok bool, expiredAt bool) {
+	if job.ID == "" || job.Task == "" {
+		return false, false
+	}
+
+	switch job.Kind {
+	case JobKindCron:
+		if job.Expr == "" {
+			return false, false
+		}
+		return true, false
+	case JobKindAt:
+		if job.AtTime.IsZero() {
+			return false, false
+		}
+		if job.Enabled && !job.AtTime.After(now) {
+			return false, true
+		}
+		return true, false
+	default:
+		return false, false
+	}
+}
+
 func normalizeJob(job Job) Job {
 	job.ID = strings.TrimSpace(job.ID)
 	job.Kind = strings.ToLower(strings.TrimSpace(job.Kind))
 	job.Expr = strings.TrimSpace(job.Expr)
 	job.Task = strings.TrimSpace(job.Task)
 	job.Agent = strings.TrimSpace(job.Agent)
-	job.AtTime = job.AtTime.UTC()
+	if !job.AtTime.IsZero() {
+		job.AtTime = job.AtTime.UTC()
+	}
 
 	if job.Kind == "" {
 		if !job.AtTime.IsZero() {
