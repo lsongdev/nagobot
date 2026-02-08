@@ -31,6 +31,9 @@ func DefaultConfig() *Config {
 				Token:      "",
 				AllowedIDs: []int64{},
 			},
+			Web: &WebChannelConfig{
+				Addr: runtimecfg.WebChannelDefaultAddr,
+			},
 		},
 		Logging: logDefaults,
 	}
@@ -75,6 +78,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Channels.Telegram.AllowedIDs == nil {
 		c.Channels.Telegram.AllowedIDs = []int64{}
+	}
+	if c.Channels.Web == nil {
+		c.Channels.Web = &WebChannelConfig{}
+	}
+	if c.Channels.Web.Addr == "" {
+		c.Channels.Web.Addr = runtimecfg.WebChannelDefaultAddr
 	}
 
 	def := defaultLoggingConfig()

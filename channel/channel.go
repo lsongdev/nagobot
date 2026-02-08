@@ -82,6 +82,12 @@ func (m *Manager) SendTo(ctx context.Context, channelName, text, replyTo string)
 
 // StartAll starts all registered channels.
 func (m *Manager) StartAll(ctx context.Context) error {
+	if webCh, ok := m.channels["web"]; ok {
+		if err := m.startChannel(ctx, webCh); err != nil {
+			return err
+		}
+	}
+
 	telegramCh, hasTelegram := m.channels["telegram"]
 	if hasTelegram {
 		if err := m.startChannel(ctx, telegramCh); err != nil {

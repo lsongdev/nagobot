@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nagobot Web Chat</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0b1020; color: #e5e7eb; }
+      .wrap { max-width: 900px; margin: 0 auto; padding: 16px; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; gap: 12px; }
+      .title { font-size: 18px; font-weight: 700; }
+      .status { font-size: 12px; color: #93c5fd; }
+      .chat { border: 1px solid #1f2937; border-radius: 10px; padding: 12px; overflow: auto; background: #111827; }
+      .msg { margin: 10px 0; white-space: pre-wrap; word-break: break-word; }
+      .msg.user { color: #93c5fd; }
+      .msg.bot { color: #f9fafb; }
+      .msg.system { color: #9ca3af; }
+      .bar { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+      textarea { width: 100%; min-height: 60px; max-height: 180px; resize: vertical; border-radius: 10px; border: 1px solid #374151; background: #0f172a; color: #e5e7eb; padding: 10px; }
+      button { border: 0; border-radius: 10px; padding: 10px 16px; background: #2563eb; color: white; font-weight: 600; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .meta { font-size: 11px; color: #9ca3af; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div>
+        <div class="title">Nagobot Web Chat</div>
+        <div class="status" id="status">Connecting...</div>
+        <div class="meta" id="meta">session: main</div>
+      </div>
+      <div class="chat" id="chat"></div>
+      <div class="bar">
+        <textarea id="input" placeholder="Type your message..."></textarea>
+        <button id="send">Send</button>
+      </div>
+    </div>
+
+    <script>
+      const chatEl = document.getElementById("chat");
+      const inputEl = document.getElementById("input");
+      const sendBtn = document.getElementById("send");
+      const statusEl = document.getElementById("status");
+      const sessionId = "main";
+
+      let ws = null;
+      let retry = 0;
+
+      function addMsg(role, text) {
+        const el = document.createElement("div");
+        el.className = `msg ${role}`;
+        if (role === "user") {
+          el.textContent = `You: ${text}`;
+        } else if (role === "system") {
+          el.textContent = `[system] ${text}`;
+        } else {
+          el.textContent = `Bot: ${text}`;
+        }
+        chatEl.appendChild(el);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      function clearChat() {
+        chatEl.innerHTML = "";
+      }
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+        ws.onopen = () => {
+          retry = 0;
+          setStatus("Connected");
+          sendBtn.disabled = false;
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "response" && msg.text) {
+              addMsg("bot", msg.text);
+            } else if (msg.type === "error" && msg.error) {
+              addMsg("bot", `[error] ${msg.error}`);
+            }
+          } catch {
+            addMsg("bot", event.data || "(empty)");
+          }
+        };
+
+        ws.onclose = () => {
+          setStatus("Disconnected, reconnecting...");
+          sendBtn.disabled = true;
+          const delay = Math.min(1000 * Math.pow(2, retry++), 10000);
+          setTimeout(connect, delay);
+        };
+
+        ws.onerror = () => {
+          ws.close();
+        };
+      }
+
+      async function loadHistory() {
+        try {
+          const res = await fetch("/api/history");
+          if (!res.ok) {
+            addMsg("system", `history load failed: HTTP ${res.status}`);
+            return;
+          }
+          const payload = await res.json();
+          clearChat();
+          if (!payload.messages || payload.messages.length === 0) {
+            addMsg("system", `No history in session key: ${payload.session_key}`);
+            return;
+          }
+          addMsg("system", `Loaded ${payload.messages.length} history messages from ${payload.session_key}`);
+          for (const m of payload.messages) {
+            const role = (m.role || "").toLowerCase();
+            if (role === "user") {
+              addMsg("user", m.content || "");
+            } else if (role === "assistant") {
+              addMsg("bot", m.content || "");
+            } else {
+              addMsg("system", `${m.role || "unknown"}: ${m.content || ""}`);
+            }
+          }
+        } catch (err) {
+          addMsg("system", `history load failed: ${err}`);
+        }
+      }
+
+      function sendMessage() {
+        const text = inputEl.value.trim();
+        if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const payload = {
+          type: "message",
+          id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+          session_id: sessionId,
+          text
+        };
+
+        ws.send(JSON.stringify(payload));
+        addMsg("user", text);
+        inputEl.value = "";
+      }
+
+      sendBtn.addEventListener("click", sendMessage);
+      inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      connect();
+      loadHistory();
+    </script>
+  </body>
+</html>

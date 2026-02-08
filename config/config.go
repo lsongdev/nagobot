@@ -91,10 +91,16 @@ type ExecToolsConfig struct {
 type ChannelsConfig struct {
 	AdminUserID string                 `json:"adminUserID" yaml:"adminUserID"` // Cross-channel admin user id for shared "main" session
 	Telegram    *TelegramChannelConfig `json:"telegram" yaml:"telegram"`
+	Web         *WebChannelConfig      `json:"web,omitempty" yaml:"web,omitempty"`
 }
 
 // TelegramChannelConfig contains Telegram bot configuration.
 type TelegramChannelConfig struct {
 	Token      string  `json:"token" yaml:"token"`           // Bot token from BotFather
 	AllowedIDs []int64 `json:"allowedIds" yaml:"allowedIds"` // Allowed user/chat IDs
+}
+
+// WebChannelConfig contains Web chat configuration.
+type WebChannelConfig struct {
+	Addr string `json:"addr,omitempty" yaml:"addr,omitempty"` // default: 127.0.0.1:8080
 }

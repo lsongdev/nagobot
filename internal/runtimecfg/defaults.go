@@ -15,6 +15,9 @@ const (
 	TelegramChannelMessageBufferSize = 100
 	TelegramUpdateTimeoutSeconds     = 30
 	TelegramMaxMessageLength         = 4096
+	WebChannelMessageBufferSize      = 100
+	WebChannelDefaultAddr            = "127.0.0.1:8080"
+	WebChannelShutdownTimeout        = 5 * time.Second
 )
 
 const (
