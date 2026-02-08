@@ -239,9 +239,7 @@ func WrapAgentTaskPlaceholder(base *agent.Agent, task string) *agent.Agent {
 		return nil
 	}
 	return &agent.Agent{
-		Name:         base.Name,
-		ProviderName: base.ProviderName,
-		ModelType:    base.ModelType,
+		Name: base.Name,
 		BuildPrompt: func(ctx agent.PromptContext) string {
 			if base.BuildPrompt == nil {
 				return ""

@@ -172,17 +172,6 @@ func (t *Thread) buildRuntimeContext() string {
 }
 
 func (t *Thread) resolveProvider() (provider.Provider, error) {
-	t.mu.Lock()
-	activeAgent := t.agent
-	t.mu.Unlock()
-
-	if activeAgent != nil && (strings.TrimSpace(activeAgent.ProviderName) != "" || strings.TrimSpace(activeAgent.ModelType) != "") {
-		if t.cfg.ProviderFactory == nil {
-			return nil, fmt.Errorf("provider override requested but provider factory is not configured")
-		}
-		return t.cfg.ProviderFactory(activeAgent.ProviderName, activeAgent.ModelType)
-	}
-
 	if t.provider == nil {
 		if t.cfg.ProviderFactory == nil {
 			return nil, fmt.Errorf("default provider is not configured")

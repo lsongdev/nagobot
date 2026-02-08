@@ -24,10 +24,8 @@ type PromptContext struct {
 
 // Agent builds a system prompt for a thread run.
 type Agent struct {
-	Name         string
-	BuildPrompt  func(PromptContext) string
-	ProviderName string // Optional override, empty means use defaults
-	ModelType    string // Optional override, empty means use defaults
+	Name        string
+	BuildPrompt func(PromptContext) string
 }
 
 // NewSoulAgent creates the default SOUL.md-based agent.
