@@ -99,7 +99,7 @@ func buildCronWakeMessage(job *cronpkg.Job, result string) string {
 		jobID = strings.TrimSpace(job.ID)
 	}
 	return fmt.Sprintf(
-		"[Cron job completed]\n- id: %s\n- result:\n%s\n\n[Action]\nSummarize the result briefly and report it to the user.",
+		"[Cron job completed]\n- id: %s\n- result:\n%s",
 		jobID,
 		strings.TrimSpace(result),
 	)
