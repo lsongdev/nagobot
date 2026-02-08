@@ -23,7 +23,8 @@ Required workflow:
    - `messages` is an array
 8. If validation passes, atomically replace `<session_dir>/session.json` with `session.next.json`.
 9. If replacement fails, delete leftover `session.next.json`.
-10. Continue the original task.
+10. Call `health` and verify all session files are valid (no session parse errors / invalid sessions count is 0).
+11. Continue the original task.
 
 Compression content guidance:
 - Keep top-level structure unchanged.

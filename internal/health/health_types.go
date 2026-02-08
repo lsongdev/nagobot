@@ -13,6 +13,7 @@ type Snapshot struct {
 	Paths         *PathsInfo     `json:"paths,omitempty"`
 	Thread        *ThreadInfo    `json:"thread,omitempty"`
 	Session       *SessionInfo   `json:"session,omitempty"`
+	Sessions      *SessionsInfo  `json:"sessions,omitempty"`
 	Cron          *CronInfo      `json:"cron,omitempty"`
 	WorkspaceTree *WorkspaceTree `json:"workspaceTree,omitempty"`
 }
@@ -93,6 +94,23 @@ type SessionInfo struct {
 	MessagesCount int    `json:"messagesCount,omitempty"`
 	UpdatedAt     string `json:"updatedAt,omitempty"`
 	ParseError    string `json:"parseError,omitempty"`
+}
+
+// SessionsInfo contains recursive diagnostics for sessions/*.json files.
+type SessionsInfo struct {
+	Root         string             `json:"root,omitempty"`
+	Exists       bool               `json:"exists"`
+	FilesCount   int                `json:"filesCount,omitempty"`
+	ValidCount   int                `json:"validCount,omitempty"`
+	InvalidCount int                `json:"invalidCount,omitempty"`
+	InvalidFiles []SessionFileError `json:"invalidFiles,omitempty"`
+	ScanError    string             `json:"scanError,omitempty"`
+}
+
+// SessionFileError captures one invalid session file parse result.
+type SessionFileError struct {
+	Path       string `json:"path"`
+	ParseError string `json:"parseError"`
 }
 
 // CronInfo contains cron file diagnostics and parsed jobs.

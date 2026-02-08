@@ -77,6 +77,28 @@ func FormatText(s Snapshot) string {
 		}
 	}
 
+	if s.Sessions != nil {
+		b.WriteString("\nSessions:\n")
+		b.WriteString(fmt.Sprintf("  Exists: %t\n", s.Sessions.Exists))
+		if s.Sessions.Root != "" {
+			b.WriteString(fmt.Sprintf("  Root: %s\n", s.Sessions.Root))
+		}
+		if s.Sessions.ScanError != "" {
+			b.WriteString(fmt.Sprintf("  Scan Error: %s\n", s.Sessions.ScanError))
+		}
+		if s.Sessions.FilesCount > 0 {
+			b.WriteString(fmt.Sprintf("  Files: %d\n", s.Sessions.FilesCount))
+			b.WriteString(fmt.Sprintf("  Valid: %d\n", s.Sessions.ValidCount))
+			b.WriteString(fmt.Sprintf("  Invalid: %d\n", s.Sessions.InvalidCount))
+		}
+		if len(s.Sessions.InvalidFiles) > 0 {
+			b.WriteString("  Invalid Files:\n")
+			for _, bad := range s.Sessions.InvalidFiles {
+				b.WriteString(fmt.Sprintf("    - %s\n      parse_error: %s\n", bad.Path, bad.ParseError))
+			}
+		}
+	}
+
 	if s.Cron != nil {
 		b.WriteString("\nCron:\n")
 		b.WriteString(fmt.Sprintf("  Exists: %t\n", s.Cron.Exists))
