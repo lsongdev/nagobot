@@ -163,7 +163,7 @@ func wakeActionHint(source string) string {
 	case "user_active":
 		return "Resume the target session and respond to this wake message."
 	case "child_task":
-		return "Execute this delegated task and return a concise, actionable result."
+		return "Execute this delegated task and return a result."
 	case "child_completed":
 		return "A child thread completed. Summarize the result and report to the user."
 	case "cron":
