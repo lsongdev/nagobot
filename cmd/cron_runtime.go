@@ -29,15 +29,22 @@ func startCronRuntime(ctx context.Context, rt *threadRuntime, threadMgr *thread.
 			task = strings.TrimSpace(job.Task)
 		}
 		ag = thread.WrapAgentTaskPlaceholder(ag, task)
-		t := thread.NewChannel(rt.threadConfig, ag, buildCronSessionKey(job), nil)
-		t.EnqueueInjectedUserMessage(buildCronStartMessage(job))
-		result, runErr := t.Run(ctx, task)
+		t := thread.NewChannel(rt.threadConfig, ag, buildCronSessionKey(job), nil, "cron")
+		wakeMessage := strings.TrimSpace(buildCronStartMessage(job))
+		if task != "" {
+			if wakeMessage != "" {
+				wakeMessage += "\n\n" + task
+			} else {
+				wakeMessage = task
+			}
+		}
+		result, runErr := t.Wake(ctx, "cron", wakeMessage)
 
 		if job != nil && !job.Silent && runErr == nil && strings.TrimSpace(result) != "" {
 			creatorKey := strings.TrimSpace(job.CreatorSessionKey)
 			if creatorKey == "" {
 				logger.Warn("cron job has no creator session key; skipping wake", "id", job.ID)
-			} else if wakeErr := threadMgr.WakeThread(ctx, creatorKey, buildCronWakeMessage(job, result)); wakeErr != nil {
+			} else if wakeErr := threadMgr.WakeThreadWithSource(ctx, creatorKey, "cron_finished", buildCronWakeMessage(job, result)); wakeErr != nil {
 				logger.Warn("failed to wake creator thread for cron result", "id", job.ID, "creatorSessionKey", creatorKey, "err", wakeErr)
 			}
 		}

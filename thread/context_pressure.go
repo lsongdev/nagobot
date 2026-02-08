@@ -92,13 +92,13 @@ func estimateMessagesTokens(messages []provider.Message) int {
 	return total
 }
 
-func (t *Thread) contextPressureHook() ThreadHook {
-	return func(ctx HookContext) {
+func (t *Thread) contextPressureHook() TurnHook {
+	return func(ctx TurnContext) []string {
 		if strings.TrimSpace(ctx.SessionPath) == "" {
-			return
+			return nil
 		}
 		if ctx.ContextWindowTokens <= 0 {
-			return
+			return nil
 		}
 
 		threshold := int(float64(ctx.ContextWindowTokens) * ctx.ContextWarnRatio)
@@ -106,7 +106,7 @@ func (t *Thread) contextPressureHook() ThreadHook {
 			threshold = ctx.ContextWindowTokens
 		}
 		if ctx.RequestEstimatedTokens < threshold {
-			return
+			return nil
 		}
 
 		usageRatio := float64(ctx.RequestEstimatedTokens) / float64(ctx.ContextWindowTokens)
@@ -116,17 +116,17 @@ func (t *Thread) contextPressureHook() ThreadHook {
 			usageRatio,
 			ctx.SessionPath,
 		)
-		t.EnqueueInjectedUserMessage(notice)
 
 		logger.Info(
-			"context threshold reached, compression reminder queued for next user turn",
+			"context threshold reached, compression reminder injected into current turn",
 			"threadID", ctx.ThreadID,
-			"threadType", ctx.Type,
+			"threadType", ctx.ThreadType,
 			"sessionKey", ctx.SessionKey,
 			"sessionPath", ctx.SessionPath,
 			"requestEstimatedTokens", ctx.RequestEstimatedTokens,
 			"contextWindowTokens", ctx.ContextWindowTokens,
 			"thresholdTokens", threshold,
 		)
+		return []string{notice}
 	}
 }

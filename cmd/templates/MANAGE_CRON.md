@@ -43,7 +43,7 @@ For `kind=cron`, use standard 5-field cron:
 ## Operating Procedure
 
 1. Check whether `{{WORKSPACE}}/cron.yaml` exists, and create it if it does not.
-2. Edit cron jobs with any suitable tools; `creator_session_key` can be obtained from `health`. Using the `append_file` tool can quickly append new entries.
+2. Edit cron jobs with any suitable tools; `creator_session_key` can be obtained from `health`. Using the `append_file` tool can quickly append new entries. If you're unsure whether the file ends with a newline, it's safe to add a leading newline before the text you append.
 3. Call `health` to confirm the cron job appears in runtime status; if it does not, investigate and fix it.
 
 ## Examples

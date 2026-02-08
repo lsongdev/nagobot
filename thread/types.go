@@ -58,19 +58,20 @@ func NewManager(cfg *Config) *Manager {
 
 // GetOrCreate returns an existing thread for the session key, or creates one.
 // Empty session keys always return a fresh stateless thread.
-func (m *Manager) GetOrCreate(sessionKey string, ag *agent.Agent, sink Sink) *Thread {
+func (m *Manager) GetOrCreate(sessionKey string, ag *agent.Agent, sink Sink, sinkLabel string) *Thread {
 	if strings.TrimSpace(sessionKey) == "" {
-		return NewPlain(m.cfg, ag, sink).Thread
+		return NewPlain(m.cfg, ag, sink, sinkLabel).Thread
 	}
-	return m.GetOrCreateChannel(sessionKey, ag, sink).Thread
+	return m.GetOrCreateChannel(sessionKey, ag, sink, sinkLabel).Thread
 }
 
 // GetOrCreateChannel returns an existing channel thread, or creates one.
-func (m *Manager) GetOrCreateChannel(sessionKey string, ag *agent.Agent, sink Sink) *ChannelThread {
+func (m *Manager) GetOrCreateChannel(sessionKey string, ag *agent.Agent, sink Sink, sinkLabel string) *ChannelThread {
 	sessionKey = strings.TrimSpace(sessionKey)
 	if sessionKey == "" {
 		sessionKey = "channel:default"
 	}
+	sinkLabel = strings.TrimSpace(sinkLabel)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -81,11 +82,12 @@ func (m *Manager) GetOrCreateChannel(sessionKey string, ag *agent.Agent, sink Si
 			t.agent = ag
 		}
 		t.sink = sink
+		t.sinkLabel = sinkLabel
 		t.mu.Unlock()
 		return t
 	}
 
-	t := NewChannel(m.cfg, ag, sessionKey, sink)
+	t := NewChannel(m.cfg, ag, sessionKey, sink, sinkLabel)
 	m.threads[sessionKey] = t
 	return t
 }
@@ -104,16 +106,14 @@ type Thread struct {
 
 	sessionKey string
 	sink       Sink
+	sinkLabel  string
 	allowSpawn bool
 
-	mu             sync.Mutex
-	runMu          sync.Mutex
-	hooks          []ThreadHook
-	injectQueue    []string
-	children       map[string]*childState
-	childCounter   int64
-	pendingResults []pendingChildResult
-	autoRunning    bool
+	mu           sync.Mutex
+	runMu        sync.Mutex
+	hooks        []TurnHook
+	children     map[string]*childState
+	childCounter int64
 }
 
 // PlainThread is the base execution thread.
@@ -137,28 +137,22 @@ type childState struct {
 	err    error
 }
 
-type pendingChildResult struct {
-	ID     string
-	Result string
-	Err    error
-}
-
 // NewPlain creates a stateless plain thread.
-func NewPlain(cfg *Config, ag *agent.Agent, sink Sink) *PlainThread {
+func NewPlain(cfg *Config, ag *agent.Agent, sink Sink, sinkLabel string) *PlainThread {
 	return &PlainThread{
-		Thread: newThread(cfg, ag, "", sink, ThreadTypePlain, true),
+		Thread: newThread(cfg, ag, "", sink, sinkLabel, ThreadTypePlain, true),
 	}
 }
 
 // NewChannel creates a channel-bound thread that can persist session state.
-func NewChannel(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink) *ChannelThread {
+func NewChannel(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, sinkLabel string) *ChannelThread {
 	sessionKey = strings.TrimSpace(sessionKey)
 	if sessionKey == "" {
 		sessionKey = "channel:default"
 	}
 	return &ChannelThread{
 		PlainThread: &PlainThread{
-			Thread: newThread(cfg, ag, sessionKey, sink, ThreadTypeChannel, true),
+			Thread: newThread(cfg, ag, sessionKey, sink, sinkLabel, ThreadTypeChannel, true),
 		},
 	}
 }
@@ -171,21 +165,21 @@ func NewChild(cfg *Config, ag *agent.Agent, sink Sink) *ChildThread {
 func newChildWithSession(cfg *Config, ag *agent.Agent, sink Sink, sessionKey string) *ChildThread {
 	return &ChildThread{
 		PlainThread: &PlainThread{
-			Thread: newThread(cfg, ag, sessionKey, sink, ThreadTypeChild, false),
+			Thread: newThread(cfg, ag, sessionKey, sink, "", ThreadTypeChild, false),
 		},
 	}
 }
 
 // New keeps backward compatibility while preferring explicit constructors.
-func New(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink) *Thread {
+func New(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, sinkLabel string) *Thread {
 	sessionKey = strings.TrimSpace(sessionKey)
 	if sessionKey == "" {
-		return NewPlain(cfg, ag, sink).Thread
+		return NewPlain(cfg, ag, sink, sinkLabel).Thread
 	}
-	return NewChannel(cfg, ag, sessionKey, sink).Thread
+	return NewChannel(cfg, ag, sessionKey, sink, sinkLabel).Thread
 }
 
-func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind ThreadType, allowSpawn bool) *Thread {
+func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, sinkLabel string, kind ThreadType, allowSpawn bool) *Thread {
 	if cfg == nil {
 		cfg = &Config{}
 	}
@@ -210,6 +204,7 @@ func newThread(cfg *Config, ag *agent.Agent, sessionKey string, sink Sink, kind 
 		workspace:  cfg.Workspace,
 		sessionKey: sessionKey,
 		sink:       sink,
+		sinkLabel:  strings.TrimSpace(sinkLabel),
 		allowSpawn: allowSpawn,
 		children:   make(map[string]*childState),
 	}

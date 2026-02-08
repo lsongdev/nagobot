@@ -44,7 +44,7 @@ func (t *Thread) SpawnChild(ctx context.Context, ag *agent.Agent, task, taskCont
 	}
 
 	if wait {
-		return child.Run(ctx, userMessage)
+		return child.Wake(ctx, "child_task", userMessage)
 	}
 
 	t.mu.Lock()
@@ -57,21 +57,20 @@ func (t *Thread) SpawnChild(ctx context.Context, ag *agent.Agent, task, taskCont
 	t.mu.Unlock()
 
 	go func() {
-		result, err := child.Run(ctx, userMessage)
+		result, err := child.Wake(ctx, "child_task", userMessage)
 		t.mu.Lock()
 		state.result = result
 		state.err = err
 		close(state.done)
-		t.pendingResults = append(t.pendingResults, pendingChildResult{ID: childID, Result: result, Err: err})
-		shouldStartAuto := t.sink != nil && !t.autoRunning
-		if shouldStartAuto {
-			t.autoRunning = true
-		}
 		t.mu.Unlock()
 
-		if shouldStartAuto {
-			go t.runAsyncContinuations(ctx)
+		var message string
+		if err != nil {
+			message = fmt.Sprintf("Child %s failed: %v", childID, err)
+		} else {
+			message = fmt.Sprintf("Child %s completed:\n%s", childID, result)
 		}
+		t.WakeAsync(ctx, "child_completed", message)
 	}()
 
 	return childID, nil
@@ -128,34 +127,72 @@ func RandomHex(n int) string {
 	return hex.EncodeToString(buf)
 }
 
-// Wake appends a wake message and triggers auto continuation when sink exists.
-func (t *Thread) Wake(ctx context.Context, message string) {
+// Wake executes one turn from a wake source.
+func (t *Thread) Wake(ctx context.Context, source, message string) (string, error) {
+	source = strings.TrimSpace(source)
 	message = strings.TrimSpace(message)
+	if message == "" {
+		return "", nil
+	}
+	if source == "" {
+		source = "unknown"
+	}
+
+	now := time.Now()
+	wakeHeader := fmt.Sprintf(
+		"[Wake: %s | %s (%s, %s, UTC%s)]",
+		source,
+		now.Format(time.RFC3339),
+		now.Weekday().String(),
+		now.Location().String(),
+		now.Format("-07:00"),
+	)
+	return t.run(ctx, wakeHeader+"\n"+message)
+}
+
+// WakeAsync executes a wake-triggered run asynchronously.
+func (t *Thread) WakeAsync(ctx context.Context, source, message string) {
+	source = strings.TrimSpace(source)
+	message = strings.TrimSpace(message)
+	if source == "" {
+		source = "unknown"
+	}
 	if message == "" {
 		return
 	}
 
 	t.mu.Lock()
-	t.pendingResults = append(t.pendingResults, pendingChildResult{
-		ID:     "wake",
-		Result: message,
-	})
-	shouldStartAuto := t.sink != nil && !t.autoRunning
-	if shouldStartAuto {
-		t.autoRunning = true
-	}
+	hasSink := t.sink != nil
+	threadID := t.id
+	sessionKey := t.sessionKey
 	t.mu.Unlock()
-
-	if shouldStartAuto {
-		go t.runAsyncContinuations(ctx)
+	if !hasSink {
+		logger.Warn("wake on sinkless thread; dropping", "threadID", threadID, "sessionKey", sessionKey, "source", source)
+		return
 	}
+
+	go func() {
+		if _, err := t.Wake(WithSink(ctx), source, message); err != nil {
+			logger.Warn("wake run failed", "threadID", threadID, "sessionKey", sessionKey, "source", source, "err", err)
+		}
+	}()
 }
 
 // WakeThread wakes a managed channel thread by session key.
+// Kept for compatibility; defaults source to "external".
 func (m *Manager) WakeThread(ctx context.Context, sessionKey, message string) error {
+	return m.WakeThreadWithSource(ctx, sessionKey, "external", message)
+}
+
+// WakeThreadWithSource wakes a managed channel thread by session key and source.
+func (m *Manager) WakeThreadWithSource(ctx context.Context, sessionKey, source, message string) error {
 	sessionKey = strings.TrimSpace(sessionKey)
 	if sessionKey == "" {
 		return fmt.Errorf("session key is required")
+	}
+	source = strings.TrimSpace(source)
+	if source == "" {
+		source = "external"
 	}
 
 	m.mu.Lock()
@@ -165,62 +202,8 @@ func (m *Manager) WakeThread(ctx context.Context, sessionKey, message string) er
 		return fmt.Errorf("thread not found: %s", sessionKey)
 	}
 
-	t.Wake(ctx, message)
+	t.WakeAsync(ctx, source, message)
 	return nil
-}
-
-func (t *Thread) drainPendingResults() string {
-	t.mu.Lock()
-	pending := t.pendingResults
-	t.pendingResults = nil
-	t.mu.Unlock()
-
-	if len(pending) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("[Async thread results since last turn]\n")
-	for _, r := range pending {
-		if r.Err != nil {
-			sb.WriteString(fmt.Sprintf("- %s failed: %v\n", r.ID, r.Err))
-			continue
-		}
-		sb.WriteString(fmt.Sprintf("- %s completed: %s\n", r.ID, r.Result))
-	}
-	return sb.String()
-}
-
-func (t *Thread) runAsyncContinuations(ctx context.Context) {
-	defer func() {
-		t.mu.Lock()
-		t.autoRunning = false
-		shouldRestart := t.sink != nil && len(t.pendingResults) > 0
-		if shouldRestart {
-			t.autoRunning = true
-		}
-		t.mu.Unlock()
-
-		if shouldRestart {
-			go t.runAsyncContinuations(ctx)
-		}
-	}()
-
-	for {
-		t.mu.Lock()
-		pendingCount := len(t.pendingResults)
-		hasSink := t.sink != nil
-		t.mu.Unlock()
-
-		if pendingCount == 0 || !hasSink {
-			return
-		}
-
-		if _, err := t.Run(WithSink(ctx), ""); err != nil {
-			logger.Warn("async child continuation failed", "threadID", t.id, "err", err)
-			return
-		}
-	}
 }
 
 // WrapAgentTaskPlaceholder binds {{TASK}} in a prompt-builder agent.

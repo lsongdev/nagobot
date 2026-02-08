@@ -86,8 +86,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 			userMessage = fmt.Sprintf("[Media: %s]\n%s\n\n%s", mediaType, strings.Join(mediaParts, "\n"), msg.Text)
 		}
 
-		t := threadMgr.GetOrCreateChannel(sessionKey, rt.soulAgent, buildThreadSink(manager, msg))
-		response, err := t.Run(thread.WithoutSink(ctx), userMessage)
+		t := threadMgr.GetOrCreateChannel(sessionKey, rt.soulAgent, buildThreadSink(manager, msg), msg.ChannelID)
+		response, err := t.Wake(thread.WithoutSink(ctx), "user_message", userMessage)
 		if err != nil {
 			logger.Error("thread error", "err", err)
 			return &channel.Response{

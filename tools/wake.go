@@ -11,7 +11,7 @@ import (
 
 // ThreadWaker wakes a session-bound thread with an injected message.
 type ThreadWaker interface {
-	WakeThread(ctx context.Context, sessionKey, message string) error
+	WakeThreadWithSource(ctx context.Context, sessionKey, source, message string) error
 }
 
 // WakeThreadTool wakes an existing thread by session key.
@@ -74,7 +74,7 @@ func (t *WakeThreadTool) Run(ctx context.Context, args json.RawMessage) string {
 		return "Error: message is required"
 	}
 
-	if err := t.waker.WakeThread(ctx, sessionKey, message); err != nil {
+	if err := t.waker.WakeThreadWithSource(ctx, sessionKey, "user_active", message); err != nil {
 		return fmt.Sprintf("Error: failed to wake thread: %v", err)
 	}
 	return fmt.Sprintf("Thread awakened: %s", sessionKey)

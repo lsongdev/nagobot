@@ -7,7 +7,7 @@ import (
 )
 
 func TestThreadCompositionConstructors(t *testing.T) {
-	plain := NewPlain(nil, nil, nil)
+	plain := NewPlain(nil, nil, nil, "")
 	if plain == nil || plain.Thread == nil {
 		t.Fatalf("plain thread should be initialized")
 	}
@@ -18,7 +18,7 @@ func TestThreadCompositionConstructors(t *testing.T) {
 		t.Fatalf("plain sessionKey should be empty, got %q", plain.sessionKey)
 	}
 
-	channel := NewChannel(nil, nil, " chat:user ", nil)
+	channel := NewChannel(nil, nil, " chat:user ", nil, "cli:local")
 	if channel == nil || channel.PlainThread == nil || channel.Thread == nil {
 		t.Fatalf("channel thread composition should be initialized")
 	}
@@ -45,8 +45,8 @@ func TestManagerGetOrCreateChannelReusesChannelThread(t *testing.T) {
 	mgr := NewManager(&Config{})
 	ag := agent.NewRawAgent("a", "prompt")
 
-	first := mgr.GetOrCreateChannel("room:1", ag, nil)
-	second := mgr.GetOrCreateChannel("room:1", nil, nil)
+	first := mgr.GetOrCreateChannel("room:1", ag, nil, "room")
+	second := mgr.GetOrCreateChannel("room:1", nil, nil, "room")
 	if first != second {
 		t.Fatalf("expected channel thread reuse")
 	}
@@ -58,8 +58,8 @@ func TestManagerGetOrCreateChannelReusesChannelThread(t *testing.T) {
 func TestManagerGetOrCreatePlainReturnsFreshThread(t *testing.T) {
 	mgr := NewManager(&Config{})
 
-	first := mgr.GetOrCreate("", nil, nil)
-	second := mgr.GetOrCreate("", nil, nil)
+	first := mgr.GetOrCreate("", nil, nil, "")
+	second := mgr.GetOrCreate("", nil, nil, "")
 	if first == second {
 		t.Fatalf("plain threads should not be cached")
 	}

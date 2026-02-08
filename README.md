@@ -19,6 +19,7 @@ This project is evolving rapidly.
 - Skills
 - Agent
 - Cron
+- Multi Thread
 
 ## Supported Providers and Model Types
 

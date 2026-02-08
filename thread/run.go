@@ -14,10 +14,15 @@ import (
 	"github.com/linanwx/nagobot/tools"
 )
 
-// Run executes one thread turn.
-func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
+// run executes one thread turn.
+func (t *Thread) run(ctx context.Context, userMessage string) (string, error) {
 	t.runMu.Lock()
 	defer t.runMu.Unlock()
+
+	userMessage = strings.TrimSpace(userMessage)
+	if userMessage == "" {
+		return "", nil
+	}
 
 	t.mu.Lock()
 	activeAgent := t.agent
@@ -31,23 +36,6 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 
 	runtimeTools := t.runtimeTools()
 	skillsSection := t.buildSkillsSection()
-
-	hasRealUserMessage := strings.TrimSpace(userMessage) != ""
-	injectedUserMessages := []string{}
-	if hasRealUserMessage {
-		injectedUserMessages = append(injectedUserMessages, t.drainInjectQueue()...)
-	}
-
-		if pending := t.drainPendingResults(); pending != "" {
-			injectedUserMessages = append(injectedUserMessages, pending)
-			if !hasRealUserMessage {
-				injectedUserMessages = append(injectedUserMessages, "[System Wake Notice] You were awakened because an async child thread has completed. The result is shown above. Summarize it and send the user a concise update.")
-			}
-		}
-
-	if !hasRealUserMessage && len(injectedUserMessages) == 0 {
-		return "", nil
-	}
 
 	promptCtx := agent.PromptContext{
 		Workspace: t.workspace,
@@ -63,6 +51,9 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	if strings.TrimSpace(systemPrompt) == "" {
 		systemPrompt = agent.NewRawAgent("fallback", "You are a helpful AI assistant.").BuildPrompt(promptCtx)
 	}
+	if runtimeContext := t.buildRuntimeContext(); runtimeContext != "" {
+		systemPrompt = strings.TrimSpace(systemPrompt) + "\n\n" + runtimeContext
+	}
 
 	messages := make([]provider.Message, 0, 2)
 	messages = append(messages, provider.SystemMessage(systemPrompt))
@@ -72,33 +63,10 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 		messages = append(messages, session.Messages...)
 	}
 
-	turnUserMessages := make([]provider.Message, 0, len(injectedUserMessages)+2)
-	for _, injected := range injectedUserMessages {
-		msg := provider.UserMessage(injected)
-		messages = append(messages, msg)
-		turnUserMessages = append(turnUserMessages, msg)
-	}
-	if hasRealUserMessage {
-		msg := provider.UserMessage(userMessage)
-		messages = append(messages, msg)
-		turnUserMessages = append(turnUserMessages, msg)
-
-		// TODO: implement time system (timezone/user-locale aware runtime time injection).
-		now := time.Now()
-		timeMsg := provider.UserMessage(fmt.Sprintf(
-			"[Runtime time note] Current server time: %s (weekday: %s, timezone: %s, offset: UTC%s).",
-			now.Format(time.RFC3339),
-			now.Weekday().String(),
-			now.Location().String(),
-			now.Format("-07:00"),
-		))
-		messages = append(messages, timeMsg)
-		turnUserMessages = append(turnUserMessages, timeMsg)
-	}
-
-	if len(turnUserMessages) == 0 {
-		return "", nil
-	}
+	turnUserMessages := make([]provider.Message, 0, 4)
+	userMsg := provider.UserMessage(userMessage)
+	messages = append(messages, userMsg)
+	turnUserMessages = append(turnUserMessages, userMsg)
 
 	sessionEstimatedTokens := 0
 	if session != nil {
@@ -111,8 +79,6 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 		"threadID", t.id,
 		"threadType", t.kind,
 		"sessionKey", t.sessionKey,
-		"injectedUserMessages", len(injectedUserMessages),
-		"hasRealUserMessage", hasRealUserMessage,
 		"sessionEstimatedTokens", sessionEstimatedTokens,
 		"requestEstimatedTokens", requestEstimatedTokens,
 		"contextWindowTokens", contextWindowTokens,
@@ -120,29 +86,26 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	)
 
 	sessionPath, _ := t.sessionFilePath()
-	sessionSnapshot := []provider.Message{}
-	if session != nil && len(session.Messages) > 0 {
-		sessionSnapshot = make([]provider.Message, len(session.Messages))
-		copy(sessionSnapshot, session.Messages)
-	}
-	requestSnapshot := make([]provider.Message, len(messages))
-	copy(requestSnapshot, messages)
-	injectedSnapshot := make([]string, len(injectedUserMessages))
-	copy(injectedSnapshot, injectedUserMessages)
-	t.runHooks(HookContext{
+	hookInjections := t.runHooks(TurnContext{
 		ThreadID:               t.id,
-		Type:                   t.kind,
+		ThreadType:             t.kind,
 		SessionKey:             t.sessionKey,
 		SessionPath:            sessionPath,
-		SessionMessages:        sessionSnapshot,
-		InjectedMessages:       injectedSnapshot,
 		UserMessage:            userMessage,
-		RequestMessages:        requestSnapshot,
 		SessionEstimatedTokens: sessionEstimatedTokens,
 		RequestEstimatedTokens: requestEstimatedTokens,
 		ContextWindowTokens:    contextWindowTokens,
 		ContextWarnRatio:       contextWarnRatio,
 	})
+	for _, injection := range hookInjections {
+		trimmed := strings.TrimSpace(injection)
+		if trimmed == "" {
+			continue
+		}
+		msg := provider.UserMessage(trimmed)
+		messages = append(messages, msg)
+		turnUserMessages = append(turnUserMessages, msg)
+	}
 
 	runCtx := tools.WithRuntimeContext(ctx, tools.RuntimeContext{
 		SessionKey: t.sessionKey,
@@ -179,6 +142,32 @@ func (t *Thread) Run(ctx context.Context, userMessage string) (string, error) {
 	}
 
 	return response, nil
+}
+
+func (t *Thread) buildRuntimeContext() string {
+	t.mu.Lock()
+	threadID := t.id
+	threadType := t.kind
+	sessionKey := strings.TrimSpace(t.sessionKey)
+	sinkLabel := strings.TrimSpace(t.sinkLabel)
+	sinkRegistered := t.sink != nil
+	t.mu.Unlock()
+
+	if sessionKey == "" {
+		sessionKey = "none"
+	}
+	if sinkLabel == "" {
+		sinkLabel = "none"
+	}
+
+	return fmt.Sprintf(
+		"[Thread Runtime Context]\n- thread_id: %s\n- thread_type: %s\n- session_key: %s\n- sink_label: %s\n- sink_registered: %t",
+		threadID,
+		threadType,
+		sessionKey,
+		sinkLabel,
+		sinkRegistered,
+	)
 }
 
 func (t *Thread) resolveProvider() (provider.Provider, error) {

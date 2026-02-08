@@ -1,26 +1,17 @@
 package thread
 
-import (
-	"strings"
+// TurnHook runs during message construction and returns messages to inject in
+// the current turn.
+type TurnHook func(ctx TurnContext) []string
 
-	"github.com/linanwx/nagobot/provider"
-)
-
-// ThreadHook runs during a thread turn with full request context.
-type ThreadHook func(ctx HookContext)
-
-// HookContext carries request-building context for hooks.
-type HookContext struct {
-	ThreadID string
-	Type     ThreadType
+// TurnContext carries read-only request context for hook evaluation.
+type TurnContext struct {
+	ThreadID   string
+	ThreadType ThreadType
 
 	SessionKey  string
 	SessionPath string
-
-	SessionMessages  []provider.Message
-	InjectedMessages []string
-	UserMessage      string
-	RequestMessages  []provider.Message
+	UserMessage string
 
 	SessionEstimatedTokens int
 	RequestEstimatedTokens int
@@ -29,7 +20,7 @@ type HookContext struct {
 }
 
 // RegisterHook adds a hook for this thread.
-func (t *Thread) RegisterHook(h ThreadHook) {
+func (t *Thread) RegisterHook(h TurnHook) {
 	if h == nil {
 		return
 	}
@@ -38,36 +29,17 @@ func (t *Thread) RegisterHook(h ThreadHook) {
 	t.mu.Unlock()
 }
 
-// EnqueueInjectedUserMessage queues a user message to inject before the next real user message.
-func (t *Thread) EnqueueInjectedUserMessage(message string) {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		return
-	}
+func (t *Thread) runHooks(ctx TurnContext) []string {
 	t.mu.Lock()
-	t.injectQueue = append(t.injectQueue, message)
-	t.mu.Unlock()
-}
-
-func (t *Thread) drainInjectQueue() []string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if len(t.injectQueue) == 0 {
-		return nil
-	}
-	out := make([]string, len(t.injectQueue))
-	copy(out, t.injectQueue)
-	t.injectQueue = nil
-	return out
-}
-
-func (t *Thread) runHooks(ctx HookContext) {
-	t.mu.Lock()
-	hooks := make([]ThreadHook, len(t.hooks))
+	hooks := make([]TurnHook, len(t.hooks))
 	copy(hooks, t.hooks)
 	t.mu.Unlock()
 
+	var injected []string
 	for _, h := range hooks {
-		h(ctx)
+		if messages := h(ctx); len(messages) > 0 {
+			injected = append(injected, messages...)
+		}
 	}
+	return injected
 }
