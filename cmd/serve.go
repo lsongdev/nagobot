@@ -138,7 +138,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// wake_thread and send_message are shared, and each thread clones this registry at runtime.
 	rt.toolRegistry.Register(tools.NewWakeThreadTool(threadMgr))
-	rt.toolRegistry.Register(tools.NewSendMessageTool(manager))
+	adminUserID := ""
+	if cfg.Channels != nil {
+		adminUserID = cfg.Channels.AdminUserID
+	}
+	rt.toolRegistry.Register(tools.NewSendMessageTool(manager, adminUserID))
 
 	scheduler, err := startCronRuntime(ctx, rt, threadMgr)
 	if err != nil {

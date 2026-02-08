@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/linanwx/nagobot/provider"
 )
@@ -15,12 +16,16 @@ type ChannelSender interface {
 
 // SendMessageTool sends a message to a specific channel.
 type SendMessageTool struct {
-	sender ChannelSender
+	sender                 ChannelSender
+	telegramDefaultReplyTo string
 }
 
 // NewSendMessageTool creates a new send_message tool.
-func NewSendMessageTool(sender ChannelSender) *SendMessageTool {
-	return &SendMessageTool{sender: sender}
+func NewSendMessageTool(sender ChannelSender, telegramDefaultReplyTo string) *SendMessageTool {
+	return &SendMessageTool{
+		sender:                 sender,
+		telegramDefaultReplyTo: strings.TrimSpace(telegramDefaultReplyTo),
+	}
 }
 
 // Def returns the tool definition.
@@ -70,9 +75,18 @@ func (t *SendMessageTool) Run(ctx context.Context, args json.RawMessage) string 
 		return "Error: channel sender not configured (only available in serve mode)"
 	}
 
-	if err := t.sender.SendTo(ctx, a.Channel, a.Text, a.ReplyTo); err != nil {
+	channelName := strings.TrimSpace(a.Channel)
+	replyTo := strings.TrimSpace(a.ReplyTo)
+	if channelName == "telegram" && replyTo == "" {
+		replyTo = t.telegramDefaultReplyTo
+	}
+	if channelName == "telegram" && replyTo == "" {
+		return "Error: telegram reply_to is required (no adminUserID fallback configured)"
+	}
+
+	if err := t.sender.SendTo(ctx, channelName, a.Text, replyTo); err != nil {
 		return fmt.Sprintf("Error: failed to send message: %v", err)
 	}
 
-	return fmt.Sprintf("Message sent to channel '%s'", a.Channel)
+	return fmt.Sprintf("Message sent to channel '%s'", channelName)
 }
