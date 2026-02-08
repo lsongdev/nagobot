@@ -249,7 +249,7 @@ func (t *WebFetchTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	if len(content) > runtimecfg.ToolWebFetchMaxContentChars {
-		content = content[:runtimecfg.ToolWebFetchMaxContentChars] + "\n... (content truncated)"
+		content, _ = truncateWithNotice(content, runtimecfg.ToolWebFetchMaxContentChars)
 	}
 
 	return content

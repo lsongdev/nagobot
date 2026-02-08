@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/linanwx/nagobot/internal/runtimecfg"
 	"github.com/linanwx/nagobot/logger"
 	"github.com/linanwx/nagobot/provider"
 )
@@ -92,8 +93,18 @@ func (r *Registry) Run(ctx context.Context, name string, args json.RawMessage) s
 	}
 
 	result := t.Run(ctx, args)
+	originalChars := len(result)
+	result, truncated := truncateWithNotice(result, runtimecfg.ToolResultMaxChars)
 	okResult := !strings.HasPrefix(result, "Error:")
-	logger.Debug("tool call finished", "tool", name, "ok", okResult, "latencyMs", time.Since(start).Milliseconds())
+	logger.Debug(
+		"tool call finished",
+		"tool", name,
+		"ok", okResult,
+		"truncated", truncated,
+		"resultChars", len(result),
+		"originalChars", originalChars,
+		"latencyMs", time.Since(start).Milliseconds(),
+	)
 	return result
 }
 

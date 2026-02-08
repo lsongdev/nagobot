@@ -111,9 +111,7 @@ func (t *ExecTool) Run(ctx context.Context, args json.RawMessage) string {
 	if result == "" {
 		return "(no output)"
 	}
-	if len(result) > runtimecfg.ToolExecOutputMaxChars {
-		result = result[:runtimecfg.ToolExecOutputMaxChars] + "\n... (output truncated)"
-	}
+	result, _ = truncateWithNotice(result, runtimecfg.ToolExecOutputMaxChars)
 
 	return result
 }

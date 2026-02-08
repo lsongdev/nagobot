@@ -20,6 +20,7 @@ const (
 const (
 	ToolExecDefaultTimeoutSeconds = 60
 	ToolExecOutputMaxChars        = 50000
+	ToolResultMaxChars            = 100000
 )
 
 const (
