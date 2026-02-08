@@ -1,6 +1,6 @@
 ---
 name: explain_runtime
-description: Explain how nagobot works by inspecting its repository via web tools.
+description: Guidance for explaining how nagobot works and is configured.
 ---
 # Runtime Explainer Skill
 

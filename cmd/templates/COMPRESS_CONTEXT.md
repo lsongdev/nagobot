@@ -1,6 +1,6 @@
 ---
 name: compress_context
-description: Compress session context with simple backup and atomic replace.
+description: The guidance for compressing session context with simple backup and atomic replace.
 ---
 # Context Compression Skill
 
