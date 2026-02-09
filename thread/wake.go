@@ -54,6 +54,7 @@ func (t *Thread) RunOnce(ctx context.Context) {
 		response, err := t.run(ctx, userMessage)
 		if err != nil {
 			logger.Error("thread run error", "threadID", t.id, "sessionKey", t.sessionKey, "source", msg.Source, "err", err)
+			response = fmt.Sprintf("[Error] %v", err)
 		}
 
 		if msg.Sink != nil && strings.TrimSpace(response) != "" {
