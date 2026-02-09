@@ -20,11 +20,9 @@ func TestIsOpenRouterKimiModel(t *testing.T) {
 		{
 			name: "openrouter kimi",
 			cfg: &config.Config{
-				Agents: config.AgentsConfig{
-					Defaults: config.AgentDefaults{
-						Provider:  "openrouter",
-						ModelType: "moonshotai/kimi-k2.5",
-					},
+				Thread: config.ThreadConfig{
+					Provider:  "openrouter",
+					ModelType: "moonshotai/kimi-k2.5",
 				},
 			},
 			want: true,
@@ -32,11 +30,9 @@ func TestIsOpenRouterKimiModel(t *testing.T) {
 		{
 			name: "openrouter kimi uppercase",
 			cfg: &config.Config{
-				Agents: config.AgentsConfig{
-					Defaults: config.AgentDefaults{
-						Provider:  "OpenRouter",
-						ModelType: "MOONSHOTAI/KIMI-K2.5",
-					},
+				Thread: config.ThreadConfig{
+					Provider:  "OpenRouter",
+					ModelType: "MOONSHOTAI/KIMI-K2.5",
 				},
 			},
 			want: true,
@@ -44,11 +40,9 @@ func TestIsOpenRouterKimiModel(t *testing.T) {
 		{
 			name: "openrouter non kimi",
 			cfg: &config.Config{
-				Agents: config.AgentsConfig{
-					Defaults: config.AgentDefaults{
-						Provider:  "openrouter",
-						ModelType: "deepseek-chat",
-					},
+				Thread: config.ThreadConfig{
+					Provider:  "openrouter",
+					ModelType: "deepseek-chat",
 				},
 			},
 			want: false,
@@ -56,11 +50,9 @@ func TestIsOpenRouterKimiModel(t *testing.T) {
 		{
 			name: "non openrouter kimi",
 			cfg: &config.Config{
-				Agents: config.AgentsConfig{
-					Defaults: config.AgentDefaults{
-						Provider:  "anthropic",
-						ModelType: "moonshotai/kimi-k2.5",
-					},
+				Thread: config.ThreadConfig{
+					Provider:  "anthropic",
+					ModelType: "moonshotai/kimi-k2.5",
 				},
 			},
 			want: false,

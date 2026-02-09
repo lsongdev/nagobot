@@ -48,7 +48,7 @@ func ConfigPath() (string, error) {
 
 // WorkspacePath returns the workspace path, expanding ~ if needed.
 func (c *Config) WorkspacePath() (string, error) {
-	ws := c.Agents.Defaults.Workspace
+	ws := c.Thread.Workspace
 	if ws == "" {
 		dir, err := ConfigDir()
 		if err != nil {

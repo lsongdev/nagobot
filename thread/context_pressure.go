@@ -22,8 +22,8 @@ func (t *Thread) sessionFilePath() (string, bool) {
 }
 
 func (t *Thread) contextBudget() (tokens int, warnRatio float64) {
-	tokens = runtimecfg.AgentDefaultContextWindowTokens
-	warnRatio = runtimecfg.AgentDefaultContextWarnRatio
+	tokens = runtimecfg.ThreadDefaultContextWindowTokens
+	warnRatio = runtimecfg.ThreadDefaultContextWarnRatio
 	if t.cfg == nil {
 		return tokens, warnRatio
 	}

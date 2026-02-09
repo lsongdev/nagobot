@@ -74,8 +74,8 @@ func buildThreadRuntime(cfg *config.Config, enableSessions bool) (*threadRuntime
 		Skills:              skillRegistry,
 		Agents:              agentRegistry,
 		Workspace:           workspace,
-		ContextWindowTokens: cfg.Agents.Defaults.ContextWindowTokens,
-		ContextWarnRatio:    cfg.Agents.Defaults.ContextWarnRatio,
+		ContextWindowTokens: cfg.GetContextWindowTokens(),
+		ContextWarnRatio:    cfg.GetContextWarnRatio(),
 		Sessions:            sessions,
 	}
 

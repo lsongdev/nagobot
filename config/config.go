@@ -17,22 +17,17 @@ func SetConfigDir(dir string) {
 
 // Config is the root configuration structure.
 type Config struct {
-	Agents    AgentsConfig    `json:"agents" yaml:"agents"`
+	Thread    ThreadConfig    `json:"thread" yaml:"thread"`
 	Providers ProvidersConfig `json:"providers" yaml:"providers"`
 	Tools     ToolsConfig     `json:"tools,omitempty" yaml:"tools,omitempty"`
 	Channels  *ChannelsConfig `json:"channels" yaml:"channels"`
 	Logging   LoggingConfig   `json:"logging,omitempty" yaml:"logging,omitempty"`
 }
 
-// AgentsConfig contains agent-related configuration.
-type AgentsConfig struct {
-	Defaults AgentDefaults `json:"defaults" yaml:"defaults"`
-}
-
-// AgentDefaults contains default settings for agents.
-type AgentDefaults struct {
-	Provider            string  `json:"provider" yaml:"provider"`                                           // openrouter, anthropic, deepseek, moonshot-cn, moonshot-global
-	ModelType           string  `json:"modelType" yaml:"modelType"`                                         // moonshotai/kimi-k2.5, claude-sonnet-4-5, deepseek-chat, kimi-k2.5
+// ThreadConfig contains thread runtime defaults.
+type ThreadConfig struct {
+	Provider            string  `json:"provider" yaml:"provider"` // openrouter, anthropic, deepseek, moonshot-cn, moonshot-global
+	ModelType           string  `json:"modelType" yaml:"modelType"`
 	ModelName           string  `json:"modelName,omitempty" yaml:"modelName,omitempty"`                     // optional, defaults to modelType
 	Workspace           string  `json:"workspace,omitempty" yaml:"workspace,omitempty"`                     // defaults to ~/.nagobot/workspace
 	MaxTokens           int     `json:"maxTokens,omitempty" yaml:"maxTokens,omitempty"`                     // defaults to 8192

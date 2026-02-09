@@ -44,17 +44,20 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Provider
-	fmt.Println("Provider:", cfg.Agents.Defaults.Provider)
-	fmt.Println("Model Type:", cfg.Agents.Defaults.ModelType)
-	if cfg.Agents.Defaults.ModelName != "" && cfg.Agents.Defaults.ModelName != cfg.Agents.Defaults.ModelType {
-		fmt.Println("Model Name:", cfg.Agents.Defaults.ModelName)
+	providerName := cfg.GetProvider()
+	modelType := cfg.GetModelType()
+	modelName := cfg.GetModelName()
+	fmt.Println("Provider:", providerName)
+	fmt.Println("Model Type:", modelType)
+	if modelName != "" && modelName != modelType {
+		fmt.Println("Model Name:", modelName)
 	}
 	fmt.Println()
 
 	// Validate model type
 	if err := provider.ValidateProviderModelType(
-		cfg.Agents.Defaults.Provider,
-		cfg.Agents.Defaults.ModelType,
+		providerName,
+		modelType,
 	); err != nil {
 		fmt.Println("Warning:", err)
 		fmt.Println()
@@ -72,10 +75,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println("Settings:")
-	fmt.Printf("  Max Tokens: %d\n", cfg.Agents.Defaults.MaxTokens)
-	fmt.Printf("  Temperature: %.1f\n", cfg.Agents.Defaults.Temperature)
-	fmt.Printf("  Context Window Tokens: %d\n", cfg.Agents.Defaults.ContextWindowTokens)
-	fmt.Printf("  Context Warn Ratio: %.2f\n", cfg.Agents.Defaults.ContextWarnRatio)
+	fmt.Printf("  Max Tokens: %d\n", cfg.GetMaxTokens())
+	fmt.Printf("  Temperature: %.1f\n", cfg.GetTemperature())
+	fmt.Printf("  Context Window Tokens: %d\n", cfg.GetContextWindowTokens())
+	fmt.Printf("  Context Warn Ratio: %.2f\n", cfg.GetContextWarnRatio())
 
 	return nil
 }

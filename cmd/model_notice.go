@@ -25,10 +25,10 @@ func isOpenRouterKimiModel(cfg *config.Config) bool {
 	if cfg == nil {
 		return false
 	}
-	if !strings.EqualFold(strings.TrimSpace(cfg.Agents.Defaults.Provider), "openrouter") {
+	if !strings.EqualFold(strings.TrimSpace(cfg.GetProvider()), "openrouter") {
 		return false
 	}
 
-	modelType := strings.ToLower(strings.TrimSpace(cfg.Agents.Defaults.ModelType))
+	modelType := strings.ToLower(strings.TrimSpace(cfg.GetModelType()))
 	return provider.IsKimiModel(modelType)
 }

@@ -64,10 +64,9 @@ If you don't have a provider preference, start with `deepseek-reasoner` (it offe
 DeepSeek config example:
 
 ```yaml
-agents:
-  defaults:
-    provider: deepseek
-    modelType: deepseek-reasoner
+thread:
+  provider: deepseek
+  modelType: deepseek-reasoner
 
 providers:
   deepseek:

@@ -3,11 +3,10 @@
 OpenRouter (Kimi K2.5):
 
 ```yaml
-agents:
-  defaults:
-    provider: openrouter
-    modelType: moonshotai/kimi-k2.5
-    # modelName: your-openrouter-preset-or-alias # optional
+thread:
+  provider: openrouter
+  modelType: moonshotai/kimi-k2.5
+  # modelName: your-openrouter-preset-or-alias # optional
 
 providers:
   openrouter:
@@ -20,10 +19,9 @@ If routing falls back to other upstream providers, chain-of-thought and tool-cal
 Anthropic config example:
 
 ```yaml
-agents:
-  defaults:
-    provider: anthropic
-    modelType: claude-opus-4-6 # or claude-sonnet-4-5
+thread:
+  provider: anthropic
+  modelType: claude-opus-4-6 # or claude-sonnet-4-5
 
 providers:
   anthropic:
@@ -34,10 +32,9 @@ providers:
 Moonshot CN (official) config example:
 
 ```yaml
-agents:
-  defaults:
-    provider: moonshot-cn
-    modelType: kimi-k2.5
+thread:
+  provider: moonshot-cn
+  modelType: kimi-k2.5
 
 providers:
   moonshotCN:
@@ -48,10 +45,9 @@ providers:
 Moonshot Global (official) config example:
 
 ```yaml
-agents:
-  defaults:
-    provider: moonshot-global
-    modelType: kimi-k2.5
+thread:
+  provider: moonshot-global
+  modelType: kimi-k2.5
 
 providers:
   moonshotGlobal:

@@ -74,10 +74,10 @@ func runOnboard(cmd *cobra.Command, args []string) error {
 	fmt.Println("  2. Run 'nagobot agent -m \"hello\"' to test")
 	fmt.Println()
 	fmt.Println("Default configuration:")
-	fmt.Println("  Provider:", cfg.Agents.Defaults.Provider)
-	fmt.Println("  Model:", cfg.Agents.Defaults.ModelType)
+	fmt.Println("  Provider:", cfg.GetProvider())
+	fmt.Println("  Model:", cfg.GetModelType())
 	fmt.Println()
-	switch cfg.Agents.Defaults.Provider {
+	switch cfg.GetProvider() {
 	case "deepseek":
 		fmt.Println("Get your DeepSeek API key at: https://platform.deepseek.com")
 	case "openrouter":

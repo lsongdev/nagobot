@@ -10,15 +10,13 @@ import (
 func DefaultConfig() *Config {
 	logDefaults := defaultLoggingConfig()
 	return &Config{
-		Agents: AgentsConfig{
-			Defaults: AgentDefaults{
-				Provider:            runtimecfg.AgentDefaultProvider,
-				ModelType:           runtimecfg.AgentDefaultModelType,
-				MaxTokens:           runtimecfg.AgentDefaultMaxTokens,
-				Temperature:         runtimecfg.AgentDefaultTemperature,
-				ContextWindowTokens: runtimecfg.AgentDefaultContextWindowTokens,
-				ContextWarnRatio:    runtimecfg.AgentDefaultContextWarnRatio,
-			},
+		Thread: ThreadConfig{
+			Provider:            runtimecfg.ThreadDefaultProvider,
+			ModelType:           runtimecfg.ThreadDefaultModelType,
+			MaxTokens:           runtimecfg.ThreadDefaultMaxTokens,
+			Temperature:         runtimecfg.ThreadDefaultTemperature,
+			ContextWindowTokens: runtimecfg.ThreadDefaultContextWindowTokens,
+			ContextWarnRatio:    runtimecfg.ThreadDefaultContextWarnRatio,
 		},
 		Providers: ProvidersConfig{
 			DeepSeek: &ProviderConfig{
@@ -55,23 +53,23 @@ func defaultLoggingConfig() LoggingConfig {
 }
 
 func (c *Config) applyDefaults() {
-	if c.Agents.Defaults.Provider == "" {
-		c.Agents.Defaults.Provider = runtimecfg.AgentDefaultProvider
+	if c.Thread.Provider == "" {
+		c.Thread.Provider = runtimecfg.ThreadDefaultProvider
 	}
-	if c.Agents.Defaults.ModelType == "" {
-		c.Agents.Defaults.ModelType = runtimecfg.AgentDefaultModelType
+	if c.Thread.ModelType == "" {
+		c.Thread.ModelType = runtimecfg.ThreadDefaultModelType
 	}
-	if c.Agents.Defaults.MaxTokens <= 0 {
-		c.Agents.Defaults.MaxTokens = runtimecfg.AgentDefaultMaxTokens
+	if c.Thread.MaxTokens <= 0 {
+		c.Thread.MaxTokens = runtimecfg.ThreadDefaultMaxTokens
 	}
-	if c.Agents.Defaults.Temperature == 0 {
-		c.Agents.Defaults.Temperature = runtimecfg.AgentDefaultTemperature
+	if c.Thread.Temperature == 0 {
+		c.Thread.Temperature = runtimecfg.ThreadDefaultTemperature
 	}
-	if c.Agents.Defaults.ContextWindowTokens <= 0 {
-		c.Agents.Defaults.ContextWindowTokens = runtimecfg.AgentDefaultContextWindowTokens
+	if c.Thread.ContextWindowTokens <= 0 {
+		c.Thread.ContextWindowTokens = runtimecfg.ThreadDefaultContextWindowTokens
 	}
-	if c.Agents.Defaults.ContextWarnRatio <= 0 || c.Agents.Defaults.ContextWarnRatio >= 1 {
-		c.Agents.Defaults.ContextWarnRatio = runtimecfg.AgentDefaultContextWarnRatio
+	if c.Thread.ContextWarnRatio <= 0 || c.Thread.ContextWarnRatio >= 1 {
+		c.Thread.ContextWarnRatio = runtimecfg.ThreadDefaultContextWarnRatio
 	}
 
 	if c.Channels == nil {

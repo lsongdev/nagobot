@@ -31,12 +31,12 @@ func NewFactory(cfg *config.Config) (*Factory, error) {
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	defaultProv := strings.TrimSpace(cfg.Agents.Defaults.Provider)
+	defaultProv := strings.TrimSpace(cfg.GetProvider())
 	if defaultProv == "" {
 		return nil, fmt.Errorf("default provider is required")
 	}
 
-	defaultModel := strings.TrimSpace(cfg.Agents.Defaults.ModelType)
+	defaultModel := strings.TrimSpace(cfg.GetModelType())
 	if defaultModel == "" {
 		return nil, fmt.Errorf("default model type is required")
 	}
@@ -45,14 +45,14 @@ func NewFactory(cfg *config.Config) (*Factory, error) {
 		return nil, err
 	}
 
-	maxTokens := cfg.Agents.Defaults.MaxTokens
+	maxTokens := cfg.GetMaxTokens()
 	if maxTokens == 0 {
-		maxTokens = runtimecfg.AgentDefaultMaxTokens
+		maxTokens = runtimecfg.ThreadDefaultMaxTokens
 	}
 
-	temperature := cfg.Agents.Defaults.Temperature
+	temperature := cfg.GetTemperature()
 	if temperature == 0 {
-		temperature = runtimecfg.AgentDefaultTemperature
+		temperature = runtimecfg.ThreadDefaultTemperature
 	}
 
 	f := &Factory{

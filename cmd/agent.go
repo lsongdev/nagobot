@@ -82,14 +82,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 // applyAgentOverrides applies CLI flag overrides to config.
 func applyAgentOverrides(cfg *config.Config) {
 	if providerFlag != "" {
-		cfg.Agents.Defaults.Provider = providerFlag
+		cfg.Thread.Provider = providerFlag
 	}
 	if modelFlag != "" {
-		cfg.Agents.Defaults.ModelType = modelFlag
-		cfg.Agents.Defaults.ModelName = "" // reset so modelType takes effect
+		cfg.Thread.ModelType = modelFlag
+		cfg.Thread.ModelName = "" // reset so modelType takes effect
 	}
 
-	provider := cfg.Agents.Defaults.Provider
+	provider := cfg.GetProvider()
 	if apiKeyFlag != "" {
 		switch provider {
 		case "openrouter":
