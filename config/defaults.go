@@ -12,8 +12,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
 			Defaults: AgentDefaults{
-				Provider:            "openrouter",
-				ModelType:           "moonshotai/kimi-k2.5",
+				Provider:            runtimecfg.AgentDefaultProvider,
+				ModelType:           runtimecfg.AgentDefaultModelType,
 				MaxTokens:           runtimecfg.AgentDefaultMaxTokens,
 				Temperature:         runtimecfg.AgentDefaultTemperature,
 				ContextWindowTokens: runtimecfg.AgentDefaultContextWindowTokens,
@@ -21,7 +21,7 @@ func DefaultConfig() *Config {
 			},
 		},
 		Providers: ProvidersConfig{
-			OpenRouter: &ProviderConfig{
+			DeepSeek: &ProviderConfig{
 				APIKey: "",
 			},
 		},
@@ -55,6 +55,12 @@ func defaultLoggingConfig() LoggingConfig {
 }
 
 func (c *Config) applyDefaults() {
+	if c.Agents.Defaults.Provider == "" {
+		c.Agents.Defaults.Provider = runtimecfg.AgentDefaultProvider
+	}
+	if c.Agents.Defaults.ModelType == "" {
+		c.Agents.Defaults.ModelType = runtimecfg.AgentDefaultModelType
+	}
 	if c.Agents.Defaults.MaxTokens <= 0 {
 		c.Agents.Defaults.MaxTokens = runtimecfg.AgentDefaultMaxTokens
 	}

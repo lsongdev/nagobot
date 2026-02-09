@@ -74,10 +74,15 @@ func runOnboard(cmd *cobra.Command, args []string) error {
 	fmt.Println("  2. Run 'nagobot agent -m \"hello\"' to test")
 	fmt.Println()
 	fmt.Println("Default configuration:")
-	fmt.Println("  Provider: openrouter")
-	fmt.Println("  Model: moonshotai/kimi-k2.5")
+	fmt.Println("  Provider:", cfg.Agents.Defaults.Provider)
+	fmt.Println("  Model:", cfg.Agents.Defaults.ModelType)
 	fmt.Println()
-	fmt.Println("Get your OpenRouter API key at: https://openrouter.ai/keys")
+	switch cfg.Agents.Defaults.Provider {
+	case "deepseek":
+		fmt.Println("Get your DeepSeek API key at: https://platform.deepseek.com")
+	case "openrouter":
+		fmt.Println("Get your OpenRouter API key at: https://openrouter.ai/keys")
+	}
 
 	return nil
 }

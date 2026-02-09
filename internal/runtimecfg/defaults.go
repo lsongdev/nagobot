@@ -3,6 +3,8 @@ package runtimecfg
 import "time"
 
 const (
+	AgentDefaultProvider            = "deepseek"
+	AgentDefaultModelType           = "deepseek-reasoner"
 	AgentDefaultMaxTokens           = 8192
 	AgentDefaultTemperature         = 0.95
 	AgentDefaultContextWindowTokens = 128000
