@@ -44,6 +44,7 @@ type ThreadConfig struct {
 	ContextWindowTokens int
 	ContextWarnRatio    float64
 	Sessions            *session.Manager
+	MainDefaultSink     Sink
 }
 
 // Thread is a single execution unit with an agent, wake queue, and optional session.
@@ -61,9 +62,9 @@ type Thread struct {
 	inbox  chan *WakeMessage // Buffered wake queue.
 	signal chan struct{}     // Shared with Manager for notification.
 
-	mu       sync.Mutex
-	hooks    []TurnHook
-	lastSink Sink // Fallback sink from the most recent wake that carried one.
+	mu          sync.Mutex
+	hooks       []TurnHook
+	defaultSink Sink // Fallback sink set at creation for "main" thread only.
 }
 
 // cfg returns the shared config from the manager.

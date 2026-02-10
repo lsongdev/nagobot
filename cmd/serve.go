@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/linanwx/nagobot/channel"
 	"github.com/linanwx/nagobot/config"
 	"github.com/linanwx/nagobot/logger"
+	"github.com/linanwx/nagobot/thread"
 	"github.com/linanwx/nagobot/tools"
 	"github.com/spf13/cobra"
 )
@@ -35,8 +37,8 @@ Examples:
 var (
 	serveTelegram bool
 
-	serveCLI      bool
-	serveWeb      bool
+	serveCLI bool
+	serveWeb bool
 )
 
 func init() {
@@ -78,6 +80,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Set default sink for the "main" thread: telegram (admin) -> cli.
+	threadMgr.SetMainDefaultSink(buildDefaultSink(chManager, cfg))
+
 	// Register shared tools.
 	threadMgr.RegisterTool(tools.NewWakeThreadTool(threadMgr))
 	threadMgr.RegisterTool(tools.NewCheckThreadTool(threadMgr))
@@ -112,6 +117,32 @@ func runServe(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// buildDefaultSink creates a fallback sink for the "main" thread: telegram (admin) -> cli.
+func buildDefaultSink(chMgr *channel.Manager, cfg *config.Config) thread.Sink {
+	adminID := strings.TrimSpace(cfg.GetAdminUserID())
+
+	if _, ok := chMgr.Get("telegram"); ok && adminID != "" {
+		return func(ctx context.Context, response string) error {
+			if strings.TrimSpace(response) == "" {
+				return nil
+			}
+			return chMgr.SendTo(ctx, "telegram", response, adminID)
+		}
+	}
+
+	if _, ok := chMgr.Get("cli"); ok {
+		return func(ctx context.Context, response string) error {
+			if strings.TrimSpace(response) == "" {
+				return nil
+			}
+			fmt.Println(response)
+			return nil
+		}
+	}
+
+	return nil
+}
+
 func resolveServeTargets(cmd *cobra.Command) (finalServeCLI, finalServeTelegram, finalServeWeb bool, err error) {
 	if cmd == nil {
 		return false, false, false, fmt.Errorf("serve command is nil")
@@ -142,4 +173,3 @@ func resolveServeTargets(cmd *cobra.Command) (finalServeCLI, finalServeTelegram,
 	}
 	return finalServeCLI, finalServeTelegram, finalServeWeb, nil
 }
-

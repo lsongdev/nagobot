@@ -45,12 +45,10 @@ func (t *Thread) RunOnce(ctx context.Context) {
 			t.Set(k, v)
 		}
 
-		// Update lastSink when the wake carries one; otherwise fall back.
+		// Use per-wake sink; fall back to thread's default sink.
 		sink := msg.Sink
-		if sink != nil {
-			t.lastSink = sink
-		} else {
-			sink = t.lastSink
+		if sink == nil {
+			sink = t.defaultSink
 		}
 
 		userMessage := buildWakePayload(msg.Source, msg.Message, t.id, t.sessionKey)

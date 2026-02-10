@@ -128,10 +128,18 @@ func (m *Manager) NewThread(sessionKey, agentName string) (*Thread, error) {
 	}
 	t.Agent = a
 	t.provider = m.cfg.DefaultProvider
+	if sessionKey == "main" && m.cfg.MainDefaultSink != nil {
+		t.defaultSink = m.cfg.MainDefaultSink
+	}
 	t.tools = t.buildTools()
 	t.RegisterHook(t.contextPressureHook())
 	m.threads[sessionKey] = t
 	return t, nil
+}
+
+// SetMainDefaultSink configures the fallback sink for the "main" thread.
+func (m *Manager) SetMainDefaultSink(s Sink) {
+	m.cfg.MainDefaultSink = s
 }
 
 // RegisterTool adds a tool to the shared tool registry.
