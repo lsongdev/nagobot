@@ -46,25 +46,12 @@ func (r *AgentRegistry) load() {
 
 	next := make(map[string]*AgentDef)
 	for _, entry := range entries {
-		var path string
-		var fileName string
-
-		if entry.IsDir() {
-			// Directory-based: agents/<name>/<name>.md
-			dirName := entry.Name()
-			candidate := filepath.Join(r.agentsDir, dirName, dirName+".md")
-			if _, statErr := os.Stat(candidate); statErr != nil {
-				continue
-			}
-			path = candidate
-			fileName = dirName
-		} else if strings.HasSuffix(entry.Name(), ".md") {
-			// Flat file fallback: agents/<name>.md
-			path = filepath.Join(r.agentsDir, entry.Name())
-			fileName = strings.TrimSuffix(entry.Name(), ".md")
-		} else {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
+
+		path := filepath.Join(r.agentsDir, entry.Name())
+		fileName := strings.TrimSuffix(entry.Name(), ".md")
 
 		raw, readErr := os.ReadFile(path)
 		if readErr != nil {

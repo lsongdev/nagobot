@@ -92,12 +92,6 @@ func (a *Agent) templatePath() string {
 	if a.workspace == "" {
 		return ""
 	}
-	// Directory-based: agents/<name>/<name>.md
-	dirPath := filepath.Join(a.workspace, "agents", a.Name, a.Name+".md")
-	if _, err := os.Stat(dirPath); err == nil {
-		return dirPath
-	}
-	// Flat file fallback: agents/<name>.md
 	return filepath.Join(a.workspace, "agents", a.Name+".md")
 }
 
