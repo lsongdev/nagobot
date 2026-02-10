@@ -54,8 +54,8 @@ func (m *Manager) scheduleReady(ctx context.Context, sem chan struct{}) {
 	defer m.mu.Unlock()
 
 	for _, t := range m.threads {
-		if t.state == ThreadIdle && t.hasMessages() {
-			t.state = ThreadRunning
+		if t.state == threadIdle && t.hasMessages() {
+			t.state = threadRunning
 
 			go func(thread *Thread) {
 				// Acquire concurrency slot (may block).
@@ -65,7 +65,7 @@ func (m *Manager) scheduleReady(ctx context.Context, sem chan struct{}) {
 				thread.RunOnce(ctx)
 
 				m.mu.Lock()
-				thread.state = ThreadIdle
+				thread.state = threadIdle
 				hasMore := thread.hasMessages()
 				m.mu.Unlock()
 
@@ -118,7 +118,7 @@ func (m *Manager) NewThread(sessionKey, agentName string) (*Thread, error) {
 		id:         fmt.Sprintf("thread-%d", time.Now().UnixNano()),
 		mgr:        m,
 		sessionKey: strings.TrimSpace(sessionKey),
-		state:      ThreadIdle,
+		state:      threadIdle,
 		inbox:      make(chan *WakeMessage, defaultInboxSize),
 		signal:     m.signal,
 	}
@@ -132,7 +132,7 @@ func (m *Manager) NewThread(sessionKey, agentName string) (*Thread, error) {
 		t.defaultSink = m.cfg.MainDefaultSink
 	}
 	t.tools = t.buildTools()
-	t.RegisterHook(t.contextPressureHook())
+	t.registerHook(t.contextPressureHook())
 	m.threads[sessionKey] = t
 	return t, nil
 }
@@ -158,7 +158,7 @@ func (m *Manager) ThreadStatus(id string) (tools.ThreadInfo, bool) {
 		if t.id == id {
 			info := tools.ThreadInfo{ID: t.id}
 			switch t.state {
-			case ThreadRunning:
+			case threadRunning:
 				info.State = "running"
 				info.Pending = len(t.inbox)
 			default:

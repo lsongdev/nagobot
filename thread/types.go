@@ -17,12 +17,12 @@ type Sink = msg.Sink
 // WakeMessage is an alias for msg.WakeMessage.
 type WakeMessage = msg.WakeMessage
 
-// ThreadState represents the runtime state of a thread.
-type ThreadState int
+// threadState represents the runtime state of a thread.
+type threadState int
 
 const (
-	ThreadIdle    ThreadState = iota // No pending messages.
-	ThreadRunning                    // Currently executing.
+	threadIdle    threadState = iota // No pending messages.
+	threadRunning                    // Currently executing.
 )
 
 const (
@@ -58,12 +58,12 @@ type Thread struct {
 	tools      *tools.Registry
 
 	// State machine fields.
-	state  ThreadState
+	state  threadState
 	inbox  chan *WakeMessage // Buffered wake queue.
 	signal chan struct{}     // Shared with Manager for notification.
 
 	mu          sync.Mutex
-	hooks       []TurnHook
+	hooks       []turnHook
 	defaultSink Sink // Fallback sink set at creation for "main" thread only.
 }
 

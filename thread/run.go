@@ -69,7 +69,7 @@ func (t *Thread) run(ctx context.Context, userMessage string) (string, error) {
 	)
 
 	sessionPath, _ := t.sessionFilePath()
-	hookInjections := t.runHooks(TurnContext{
+	hookInjections := t.runHooks(turnContext{
 		ThreadID:               t.id,
 		SessionKey:             t.sessionKey,
 		SessionPath:            sessionPath,

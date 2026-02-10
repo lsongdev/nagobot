@@ -118,18 +118,6 @@ func (r *AgentRegistry) New(name string) (*Agent, error) {
 	return newAgent(explicit, r.workspace), nil
 }
 
-// List returns all available agent names.
-func (r *AgentRegistry) List() []string {
-	r.mu.RLock()
-	names := make([]string, 0, len(r.agents))
-	for _, def := range r.agents {
-		names = append(names, def.Name)
-	}
-	r.mu.RUnlock()
-	sort.Strings(names)
-	return names
-}
-
 // BuildPromptSection renders a concise list of callable agents.
 func (r *AgentRegistry) BuildPromptSection() string {
 	r.mu.RLock()

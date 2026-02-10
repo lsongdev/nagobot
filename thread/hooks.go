@@ -1,11 +1,11 @@
 package thread
 
-// TurnHook runs during message construction and returns messages to inject in
+// turnHook runs during message construction and returns messages to inject in
 // the current turn.
-type TurnHook func(ctx TurnContext) []string
+type turnHook func(ctx turnContext) []string
 
-// TurnContext carries read-only request context for hook evaluation.
-type TurnContext struct {
+// turnContext carries read-only request context for hook evaluation.
+type turnContext struct {
 	ThreadID string
 
 	SessionKey  string
@@ -18,8 +18,8 @@ type TurnContext struct {
 	ContextWarnRatio       float64
 }
 
-// RegisterHook adds a hook for this thread.
-func (t *Thread) RegisterHook(h TurnHook) {
+// registerHook adds a hook for this thread.
+func (t *Thread) registerHook(h turnHook) {
 	if h == nil {
 		return
 	}
@@ -28,9 +28,9 @@ func (t *Thread) RegisterHook(h TurnHook) {
 	t.mu.Unlock()
 }
 
-func (t *Thread) runHooks(ctx TurnContext) []string {
+func (t *Thread) runHooks(ctx turnContext) []string {
 	t.mu.Lock()
-	hooks := make([]TurnHook, len(t.hooks))
+	hooks := make([]turnHook, len(t.hooks))
 	copy(hooks, t.hooks)
 	t.mu.Unlock()
 

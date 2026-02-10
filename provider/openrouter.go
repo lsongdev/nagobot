@@ -53,7 +53,7 @@ func init() {
 		EnvKey:  "OPENROUTER_API_KEY",
 		EnvBase: "OPENROUTER_API_BASE",
 		Constructor: func(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) Provider {
-			return NewOpenRouterProvider(apiKey, apiBase, modelType, modelName, maxTokens, temperature)
+			return newOpenRouterProvider(apiKey, apiBase, modelType, modelName, maxTokens, temperature)
 		},
 	})
 }
@@ -69,8 +69,8 @@ type OpenRouterProvider struct {
 	client      openai.Client
 }
 
-// NewOpenRouterProvider creates a new OpenRouter provider.
-func NewOpenRouterProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *OpenRouterProvider {
+// newOpenRouterProvider creates a new OpenRouter provider.
+func newOpenRouterProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *OpenRouterProvider {
 	if modelName == "" {
 		modelName = modelType
 	}

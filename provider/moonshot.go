@@ -24,7 +24,7 @@ func init() {
 		EnvKey:  "MOONSHOT_API_KEY",
 		EnvBase: "MOONSHOT_API_BASE",
 		Constructor: func(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) Provider {
-			return NewMoonshotProvider("moonshot-cn", apiKey, apiBase, moonshotCNAPIBase, modelType, modelName, maxTokens, temperature)
+			return newMoonshotProvider("moonshot-cn", apiKey, apiBase, moonshotCNAPIBase, modelType, modelName, maxTokens, temperature)
 		},
 	})
 
@@ -33,7 +33,7 @@ func init() {
 		EnvKey:  "MOONSHOT_GLOBAL_API_KEY",
 		EnvBase: "MOONSHOT_GLOBAL_API_BASE",
 		Constructor: func(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) Provider {
-			return NewMoonshotProvider("moonshot-global", apiKey, apiBase, moonshotGlobalAPIBase, modelType, modelName, maxTokens, temperature)
+			return newMoonshotProvider("moonshot-global", apiKey, apiBase, moonshotGlobalAPIBase, modelType, modelName, maxTokens, temperature)
 		},
 	})
 }
@@ -57,8 +57,8 @@ func moonshotRequestTemperature(modelType string, configured float64) (float64, 
 	return configured, false
 }
 
-// NewMoonshotProvider creates a new Moonshot provider.
-func NewMoonshotProvider(providerName, apiKey, apiBase, defaultBase, modelType, modelName string, maxTokens int, temperature float64) *MoonshotProvider {
+// newMoonshotProvider creates a new Moonshot provider.
+func newMoonshotProvider(providerName, apiKey, apiBase, defaultBase, modelType, modelName string, maxTokens int, temperature float64) *MoonshotProvider {
 	if modelName == "" {
 		modelName = modelType
 	}

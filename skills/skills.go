@@ -60,17 +60,6 @@ func (r *Registry) List() []*Skill {
 	return skills
 }
 
-// Names returns the names of all registered skills.
-func (r *Registry) Names() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	names := make([]string, 0, len(r.skills))
-	for name := range r.skills {
-		names = append(names, name)
-	}
-	return names
-}
-
 // LoadFromDirectory loads all skills from a directory.
 // Supports both .yaml/.yml files and .md files with YAML frontmatter.
 func (r *Registry) LoadFromDirectory(dir string) error {

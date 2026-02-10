@@ -23,7 +23,7 @@ func init() {
 		EnvKey:  "ANTHROPIC_API_KEY",
 		EnvBase: "ANTHROPIC_API_BASE",
 		Constructor: func(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) Provider {
-			return NewAnthropicProvider(apiKey, apiBase, modelType, modelName, maxTokens, temperature)
+			return newAnthropicProvider(apiKey, apiBase, modelType, modelName, maxTokens, temperature)
 		},
 	})
 }
@@ -75,8 +75,8 @@ func anthropicThinkingBudget(maxTokens int) (int64, bool) {
 	return int64(budget), true
 }
 
-// NewAnthropicProvider creates a new Anthropic provider.
-func NewAnthropicProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *AnthropicProvider {
+// newAnthropicProvider creates a new Anthropic provider.
+func newAnthropicProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *AnthropicProvider {
 	if modelName == "" {
 		modelName = modelType
 	}

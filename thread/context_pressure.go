@@ -81,8 +81,8 @@ func estimateMessagesTokens(messages []provider.Message) int {
 	return total
 }
 
-func (t *Thread) contextPressureHook() TurnHook {
-	return func(ctx TurnContext) []string {
+func (t *Thread) contextPressureHook() turnHook {
+	return func(ctx turnContext) []string {
 		if strings.TrimSpace(ctx.SessionPath) == "" {
 			return nil
 		}

@@ -23,7 +23,7 @@ func init() {
 		EnvKey:  "DEEPSEEK_API_KEY",
 		EnvBase: "DEEPSEEK_API_BASE",
 		Constructor: func(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) Provider {
-			return NewDeepSeekProvider(apiKey, apiBase, modelType, modelName, maxTokens, temperature)
+			return newDeepSeekProvider(apiKey, apiBase, modelType, modelName, maxTokens, temperature)
 		},
 	})
 }
@@ -39,8 +39,8 @@ type DeepSeekProvider struct {
 	client      openai.Client
 }
 
-// NewDeepSeekProvider creates a new DeepSeek provider.
-func NewDeepSeekProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *DeepSeekProvider {
+// newDeepSeekProvider creates a new DeepSeek provider.
+func newDeepSeekProvider(apiKey, apiBase, modelType, modelName string, maxTokens int, temperature float64) *DeepSeekProvider {
 	if modelName == "" {
 		modelName = modelType
 	}
