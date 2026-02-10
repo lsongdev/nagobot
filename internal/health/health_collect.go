@@ -72,6 +72,10 @@ func Collect(opts Options) Snapshot {
 		s.Cron = inspectCronFile(filepath.Join(opts.Workspace, "cron.jsonl"))
 	}
 
+	if opts.Channels != nil {
+		s.Channels = opts.Channels
+	}
+
 	if opts.IncludeTree && opts.Workspace != "" {
 		s.WorkspaceTree = buildWorkspaceTree(opts.Workspace, opts.TreeDepth, opts.TreeMaxEntries)
 	}

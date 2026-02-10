@@ -21,6 +21,15 @@ type HealthRuntimeContext struct {
 // HealthContextProvider returns dynamic runtime context.
 type HealthContextProvider func() HealthRuntimeContext
 
+// HealthChannelsInfo holds channel config for health output.
+type HealthChannelsInfo = healthsnap.ChannelsInfo
+
+// HealthTelegramInfo holds Telegram config for health output.
+type HealthTelegramInfo = healthsnap.TelegramInfo
+
+// HealthWebInfo holds Web config for health output.
+type HealthWebInfo = healthsnap.WebInfo
+
 // HealthTool reports runtime health info for the current process.
 type HealthTool struct {
 	Workspace    string
@@ -28,6 +37,7 @@ type HealthTool struct {
 	SkillsRoot   string
 	ProviderName string
 	ModelName    string
+	Channels     *HealthChannelsInfo
 	CtxFn        HealthContextProvider
 }
 
@@ -84,6 +94,7 @@ func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
 		ThreadID:       runtimeCtx.ThreadID,
 		SessionKey:     runtimeCtx.SessionKey,
 		SessionFile:    runtimeCtx.SessionFile,
+		Channels:       t.Channels,
 		IncludeTree:    true,
 		TreeDepth:      treeDepth,
 		TreeMaxEntries: treeMaxEntries,

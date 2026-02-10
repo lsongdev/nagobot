@@ -133,6 +133,7 @@ func (t *Thread) buildTools() *tools.Registry {
 		SkillsRoot:   cfg.SkillsDir,
 		ProviderName: cfg.ProviderName,
 		ModelName:    cfg.ModelName,
+		Channels:     cfg.HealthChannels,
 		CtxFn: func() tools.HealthRuntimeContext {
 			sessionPath, _ := t.sessionFilePath()
 			return tools.HealthRuntimeContext{

@@ -66,6 +66,25 @@ func buildThreadManager(cfg *config.Config, enableSessions bool) (*thread.Manage
 		}
 	}
 
+	var healthChannels *tools.HealthChannelsInfo
+	if ch := cfg.Channels; ch != nil {
+		healthChannels = &tools.HealthChannelsInfo{
+			AdminUserID: ch.AdminUserID,
+			UserAgents:  ch.UserAgents,
+		}
+		if ch.Telegram != nil {
+			healthChannels.Telegram = &tools.HealthTelegramInfo{
+				Configured: ch.Telegram.Token != "",
+				AllowedIDs: ch.Telegram.AllowedIDs,
+			}
+		}
+		if ch.Web != nil {
+			healthChannels.Web = &tools.HealthWebInfo{
+				Addr: ch.Web.Addr,
+			}
+		}
+	}
+
 	return thread.NewManager(&thread.ThreadConfig{
 		DefaultProvider:     defaultProvider,
 		ProviderName:        cfg.Thread.Provider,
@@ -79,5 +98,6 @@ func buildThreadManager(cfg *config.Config, enableSessions bool) (*thread.Manage
 		ContextWindowTokens: cfg.GetContextWindowTokens(),
 		ContextWarnRatio:    cfg.GetContextWarnRatio(),
 		Sessions:            sessions,
+		HealthChannels:      healthChannels,
 	}), nil
 }

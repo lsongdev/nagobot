@@ -16,6 +16,7 @@ type Snapshot struct {
 	Thread        *ThreadInfo    `json:"thread,omitempty" yaml:"thread,omitempty"`
 	Session       *SessionInfo   `json:"session,omitempty" yaml:"session,omitempty"`
 	Sessions      *SessionsInfo  `json:"sessions,omitempty" yaml:"sessions,omitempty"`
+	Channels      *ChannelsInfo   `json:"channels,omitempty" yaml:"channels,omitempty"`
 	Cron          *CronInfo      `json:"cron,omitempty" yaml:"cron,omitempty"`
 	WorkspaceTree *WorkspaceTree `json:"workspaceTree,omitempty" yaml:"workspace_tree,omitempty"`
 }
@@ -58,6 +59,8 @@ type Options struct {
 	ThreadID    string
 	SessionKey  string
 	SessionFile string
+
+	Channels *ChannelsInfo
 
 	IncludeTree    bool
 	TreeDepth      int
@@ -152,4 +155,23 @@ type TreeEntry struct {
 	Path      string `json:"path" yaml:"path"`
 	Type      string `json:"type" yaml:"type"`
 	SizeBytes int64  `json:"sizeBytes,omitempty" yaml:"size_bytes,omitempty"`
+}
+
+// ChannelsInfo contains active channel configuration for health output.
+type ChannelsInfo struct {
+	AdminUserID string            `json:"adminUserID,omitempty" yaml:"admin_user_id,omitempty"`
+	UserAgents  map[string]string `json:"userAgents,omitempty" yaml:"user_agents,omitempty"`
+	Telegram    *TelegramInfo     `json:"telegram,omitempty" yaml:"telegram,omitempty"`
+	Web         *WebInfo          `json:"web,omitempty" yaml:"web,omitempty"`
+}
+
+// TelegramInfo contains Telegram channel config (token masked).
+type TelegramInfo struct {
+	Configured bool    `json:"configured" yaml:"configured"`
+	AllowedIDs []int64 `json:"allowedIDs,omitempty" yaml:"allowed_ids,omitempty"`
+}
+
+// WebInfo contains Web channel config.
+type WebInfo struct {
+	Addr string `json:"addr,omitempty" yaml:"addr,omitempty"`
 }

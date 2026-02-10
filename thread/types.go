@@ -45,6 +45,7 @@ type ThreadConfig struct {
 	ContextWarnRatio    float64
 	Sessions            *session.Manager
 	MainDefaultSink     Sink
+	HealthChannels      *tools.HealthChannelsInfo
 }
 
 // Thread is a single execution unit with an agent, wake queue, and optional session.
