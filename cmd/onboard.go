@@ -21,7 +21,7 @@ var templateFS embed.FS
 var onboardCmd = &cobra.Command{
 	Use:   "onboard",
 	Short: "Initialize nagobot configuration and workspace",
-	Long:  `Create the nagobot configuration directory and default config file.`,
+	Long:  `Create or reconfigure nagobot configuration and workspace interactively.`,
 	RunE:  runOnboard,
 }
 
@@ -43,18 +43,17 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(configPath); err == nil {
-		fmt.Println("Config already exists at:", configPath)
-		fmt.Println("To reconfigure, edit the file directly or delete it first.")
-		return nil
-	}
+
+	// Load existing config as defaults, or start fresh.
+	existing, _ := config.Load()
+	defaults := loadOnboardDefaults(existing)
 
 	// --- interactive wizard ---
 
 	var (
-		selectedProvider string
-		selectedModel    string
-		apiKey           string
+		selectedProvider = defaults.provider
+		selectedModel    = defaults.model
+		apiKey           = defaults.apiKey
 		configureTG      bool
 	)
 
@@ -74,6 +73,10 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 	}
 
 	// Step 2: select model (dynamic based on provider)
+	// Reset model if provider changed.
+	if selectedProvider != defaults.provider {
+		selectedModel = ""
+	}
 	modelOptions := buildModelOptions(selectedProvider)
 	err = huh.NewForm(
 		huh.NewGroup(
@@ -89,6 +92,10 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 	}
 
 	// Step 3: API key
+	// Reset key if provider changed.
+	if selectedProvider != defaults.provider {
+		apiKey = ""
+	}
 	keyURL := providerURLs[selectedProvider]
 	err = huh.NewForm(
 		huh.NewGroup(
@@ -110,6 +117,7 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 	}
 
 	// Step 4: optional Telegram
+	configureTG = defaults.tgToken != ""
 	err = huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
@@ -122,7 +130,9 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	var tgToken, tgAdminID, tgAllowedIDs string
+	tgToken := defaults.tgToken
+	tgAdminID := defaults.tgAdminID
+	tgAllowedIDs := defaults.tgAllowedIDs
 	if configureTG {
 		err = huh.NewForm(
 			huh.NewGroup(
@@ -193,6 +203,39 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
+// onboardDefaults holds pre-filled values from existing config.
+type onboardDefaults struct {
+	provider     string
+	model        string
+	apiKey       string
+	tgToken      string
+	tgAdminID    string
+	tgAllowedIDs string
+}
+
+func loadOnboardDefaults(cfg *config.Config) onboardDefaults {
+	if cfg == nil {
+		return onboardDefaults{}
+	}
+	apiKey, _ := cfg.GetAPIKey()
+	return onboardDefaults{
+		provider:      cfg.GetProvider(),
+		model:         cfg.GetModelType(),
+		apiKey:        apiKey,
+		tgToken:       cfg.GetTelegramToken(),
+		tgAdminID:     cfg.GetAdminUserID(),
+		tgAllowedIDs: formatAllowedIDs(cfg.GetTelegramAllowedIDs()),
+	}
+}
+
+func formatAllowedIDs(ids []int64) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(parts, ", ")
+}
+
 func buildProviderOptions() []huh.Option[string] {
 	names := provider.SupportedProviders()
 	// Put deepseek first.
@@ -239,12 +282,14 @@ func parseAllowedIDs(raw string) []int64 {
 	return ids
 }
 
-// writeTemplate writes an embedded template file to the workspace,
-// skipping if the file already exists.
-func writeTemplate(workspace, templateName, destName string) error {
+// writeTemplate writes an embedded template file to the workspace.
+// If overwrite is false, existing files are skipped.
+func writeTemplate(workspace, templateName, destName string, overwrite bool) error {
 	destPath := filepath.Join(workspace, destName)
-	if _, err := os.Stat(destPath); err == nil {
-		return nil // already exists, don't overwrite
+	if !overwrite {
+		if _, err := os.Stat(destPath); err == nil {
+			return nil
+		}
 	}
 	data, err := templateFS.ReadFile("templates/" + templateName)
 	if err != nil {
@@ -271,16 +316,20 @@ func createBootstrapFiles(workspace string) error {
 		}
 	}
 
-	templates := []struct{ src, dst string }{
-		{"SOUL.md", "SOUL.md"},
-		{"USER.md", "USER.md"},
-		{"GENERAL.md", filepath.Join("agents", "GENERAL.md")},
-		{"EXPLAIN_RUNTIME.md", filepath.Join(skillsDir, "EXPLAIN_RUNTIME.md")},
-		{"COMPRESS_CONTEXT.md", filepath.Join(skillsDir, "COMPRESS_CONTEXT.md")},
-		{"MANAGE_CRON.md", filepath.Join(skillsDir, "MANAGE_CRON.md")},
+	// overwrite=true for all templates except USER.md
+	templates := []struct {
+		src, dst  string
+		overwrite bool
+	}{
+		{"SOUL.md", "SOUL.md", true},
+		{"USER.md", "USER.md", false},
+		{"GENERAL.md", filepath.Join("agents", "GENERAL.md"), true},
+		{"EXPLAIN_RUNTIME.md", filepath.Join(skillsDir, "EXPLAIN_RUNTIME.md"), true},
+		{"COMPRESS_CONTEXT.md", filepath.Join(skillsDir, "COMPRESS_CONTEXT.md"), true},
+		{"MANAGE_CRON.md", filepath.Join(skillsDir, "MANAGE_CRON.md"), true},
 	}
 	for _, t := range templates {
-		if err := writeTemplate(workspace, t.src, t.dst); err != nil {
+		if err := writeTemplate(workspace, t.src, t.dst, t.overwrite); err != nil {
 			return err
 		}
 	}
