@@ -54,7 +54,7 @@ Estimated request tokens are high for this thread.
 - session_key: %s
 - session_file: %s
 
-After this reply, prioritize loading skill "compress_context" in the next turn and follow it to compact the session file safely. Keep critical facts, decisions, IDs, and unresolved tasks.`, requestTokens, contextWindowTokens, usageRatio, t.sessionKey, sessionPath)
+You MUST load and execute skill "compress_context" NOW, before responding to the user. Then you can respond to the user request. Follow the skill instructions to compact the session file safely. Keep critical facts, decisions, IDs, and unresolved tasks.`, requestTokens, contextWindowTokens, usageRatio, t.sessionKey, sessionPath)
 }
 
 func estimateTextTokens(text string) int {
