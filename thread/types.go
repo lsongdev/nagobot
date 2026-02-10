@@ -58,8 +58,9 @@ type Thread struct {
 	inbox  chan *WakeMessage // Buffered wake queue.
 	signal chan struct{}     // Shared with Manager for notification.
 
-	mu    sync.Mutex
-	hooks []TurnHook
+	mu       sync.Mutex
+	hooks    []TurnHook
+	lastSink Sink // Fallback sink from the most recent wake that carried one.
 }
 
 // cfg returns the shared config from the manager.

@@ -50,6 +50,14 @@ func (t *Thread) RunOnce(ctx context.Context) {
 			t.Set(k, v)
 		}
 
+		// Update lastSink when the wake carries one; otherwise fall back.
+		sink := msg.Sink
+		if sink != nil {
+			t.lastSink = sink
+		} else {
+			sink = t.lastSink
+		}
+
 		userMessage := buildWakePayload(msg.Source, msg.Message, t.id, t.sessionKey)
 		response, err := t.run(ctx, userMessage)
 		if err != nil {
@@ -57,8 +65,8 @@ func (t *Thread) RunOnce(ctx context.Context) {
 			response = fmt.Sprintf("[Error] %v", err)
 		}
 
-		if msg.Sink != nil && strings.TrimSpace(response) != "" {
-			if sinkErr := msg.Sink(ctx, response); sinkErr != nil {
+		if sink != nil && strings.TrimSpace(response) != "" {
+			if sinkErr := sink(ctx, response); sinkErr != nil {
 				logger.Error("sink delivery error", "threadID", t.id, "sessionKey", t.sessionKey, "err", sinkErr)
 			}
 		}
