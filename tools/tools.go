@@ -181,7 +181,7 @@ func (r *Registry) writeToolLog(name string, args json.RawMessage, result string
 	}
 
 	suffix := randomHex(3)
-	fileName := fmt.Sprintf("%s-%s-%s.md", start.Format("2006-01-02"), name, suffix)
+	fileName := fmt.Sprintf("%s-%s-%s.md", start.Format("2006-01-02-15-04-05"), name, suffix)
 
 	status := "ok"
 	if !ok {

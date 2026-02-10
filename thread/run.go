@@ -136,8 +136,15 @@ func (t *Thread) buildTools() *tools.Registry {
 		Channels:     cfg.HealthChannels,
 		CtxFn: func() tools.HealthRuntimeContext {
 			sessionPath, _ := t.sessionFilePath()
+			t.mu.Lock()
+			agentName := ""
+			if t.Agent != nil {
+				agentName = t.Agent.Name
+			}
+			t.mu.Unlock()
 			return tools.HealthRuntimeContext{
 				ThreadID:    t.id,
+				AgentName:   agentName,
 				SessionKey:  t.sessionKey,
 				SessionFile: sessionPath,
 			}

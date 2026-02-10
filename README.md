@@ -53,6 +53,8 @@ go build -o nagobot .
 
 The wizard will guide you through provider selection, API key setup, and optional Telegram configuration.
 
+The project may change drastically between versions. Please re-run `onboard` after updating.
+
 2. Start the service:
 
 ```bash

@@ -57,6 +57,7 @@ type Options struct {
 	Model    string
 
 	ThreadID    string
+	AgentName   string
 	SessionKey  string
 	SessionFile string
 
@@ -87,6 +88,7 @@ type PathsInfo struct {
 // ThreadInfo contains current thread metadata.
 type ThreadInfo struct {
 	ID          string `json:"id,omitempty" yaml:"id,omitempty"`
+	AgentName   string `json:"agentName,omitempty" yaml:"agent_name,omitempty"`
 	SessionKey  string `json:"sessionKey,omitempty" yaml:"session_key,omitempty"`
 	SessionFile string `json:"sessionFile,omitempty" yaml:"session_file,omitempty"`
 }

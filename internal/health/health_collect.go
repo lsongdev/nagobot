@@ -53,10 +53,12 @@ func Collect(opts Options) Snapshot {
 	}
 
 	if opts.ThreadID != "" ||
+		opts.AgentName != "" ||
 		opts.SessionKey != "" ||
 		opts.SessionFile != "" {
 		s.Thread = &ThreadInfo{
 			ID:          opts.ThreadID,
+			AgentName:   opts.AgentName,
 			SessionKey:  opts.SessionKey,
 			SessionFile: opts.SessionFile,
 		}

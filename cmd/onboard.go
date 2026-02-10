@@ -327,7 +327,7 @@ func createBootstrapFiles(workspace string) error {
 		src, dst  string
 		overwrite bool
 	}{
-		{"SOUL.md", "SOUL.md", true},
+		{"SOUL.md", filepath.Join("agents", "soul.md"), true},
 		{"USER.md", "USER.md", false},
 		{"GENERAL.md", filepath.Join("agents", "GENERAL.md"), true},
 		{"EXPLAIN_RUNTIME.md", filepath.Join(skillsDir, "EXPLAIN_RUNTIME.md"), true},

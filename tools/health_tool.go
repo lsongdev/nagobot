@@ -16,6 +16,7 @@ type HealthRuntimeContext struct {
 	ThreadID    string
 	SessionKey  string
 	SessionFile string
+	AgentName   string
 }
 
 // HealthContextProvider returns dynamic runtime context.
@@ -92,6 +93,7 @@ func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
 		Provider:       t.ProviderName,
 		Model:          t.ModelName,
 		ThreadID:       runtimeCtx.ThreadID,
+		AgentName:      runtimeCtx.AgentName,
 		SessionKey:     runtimeCtx.SessionKey,
 		SessionFile:    runtimeCtx.SessionFile,
 		Channels:       t.Channels,

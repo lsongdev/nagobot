@@ -80,8 +80,7 @@ func formatVar(value any) string {
 	}
 }
 
-// newAgent creates an agent. Template path is derived from name and workspace:
-// "soul" → workspace/SOUL.md, others → workspace/agents/<name>.md.
+// newAgent creates an agent. Template path: workspace/agents/<name>.md.
 func newAgent(name, workspace string) *Agent {
 	return &Agent{
 		Name:      name,
@@ -92,9 +91,6 @@ func newAgent(name, workspace string) *Agent {
 func (a *Agent) templatePath() string {
 	if a.workspace == "" {
 		return ""
-	}
-	if a.Name == "soul" {
-		return filepath.Join(a.workspace, "SOUL.md")
 	}
 	return filepath.Join(a.workspace, "agents", a.Name+".md")
 }
