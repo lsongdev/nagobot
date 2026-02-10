@@ -68,10 +68,6 @@ The wizard will guide you through provider selection, API key setup, and optiona
 
 Don't know how to use it? Try these example prompts:
 
-```
-Create a job that runs at 9am, 12pm, and 6pm every day. Based on my conversation history, search news for me.
-```
+> Create a job that runs at 9am, 12pm, and 6pm every day. Based on my conversation history, search news for me.
 
-```
-I want you to search for recent stock market topics and do it in async mode.
-```
+> I want you to search for recent stock market topics, please create 3 threads to search.
