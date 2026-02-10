@@ -215,10 +215,7 @@ func (d *Dispatcher) preprocessMessage(msg *channel.Message) string {
 
 // wakeSource returns the wake source string for a channel.
 func (d *Dispatcher) wakeSource(ch channel.Channel) string {
-	if ch.Name() == "cron" {
-		return "cron"
-	}
-	return "user_message"
+	return ch.Name() // "telegram", "cli", "web", "cron", etc.
 }
 
 func truncate(s string, maxLen int) string {

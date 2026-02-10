@@ -50,7 +50,7 @@ func (t *Thread) RunOnce(ctx context.Context) {
 			t.Set(k, v)
 		}
 
-		userMessage := buildWakePayload(msg.Source, msg.Message)
+		userMessage := buildWakePayload(msg.Source, msg.Message, t.id, t.sessionKey)
 		response, err := t.run(ctx, userMessage)
 		if err != nil {
 			logger.Error("thread run error", "threadID", t.id, "sessionKey", t.sessionKey, "source", msg.Source, "err", err)
@@ -68,7 +68,7 @@ func (t *Thread) RunOnce(ctx context.Context) {
 }
 
 // buildWakePayload constructs the user message from a wake source and message.
-func buildWakePayload(source, message string) string {
+func buildWakePayload(source, message, threadID, sessionKey string) string {
 	source = strings.TrimSpace(source)
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -80,8 +80,10 @@ func buildWakePayload(source, message string) string {
 
 	now := time.Now()
 	wakeHeader := fmt.Sprintf(
-		"[Wake reason: %s | %s (%s, %s, UTC%s)]",
+		"[Wake reason: %s | thread: %s | session: %s | %s (%s, %s, UTC%s)]",
 		source,
+		threadID,
+		sessionKey,
 		now.Format(time.RFC3339),
 		now.Weekday().String(),
 		now.Location().String(),
@@ -97,7 +99,7 @@ func buildWakePayload(source, message string) string {
 
 func wakeActionHint(source string) string {
 	switch source {
-	case "user_message":
+	case "telegram", "cli", "web":
 		return "Respond directly to the user request."
 	case "user_active":
 		return "Resume the target session and respond to this wake message."
