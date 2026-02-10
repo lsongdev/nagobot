@@ -202,11 +202,7 @@ func runCronList(_ *cobra.Command, _ []string) error {
 		if job.Kind == cronsvc.JobKindAt {
 			schedule = job.AtTime.Format(time.RFC3339)
 		}
-		task := job.Task
-		if len(task) > 50 {
-			task = task[:50] + "..."
-		}
-		fmt.Printf("%-20s %-5s %-25s %-10s %s\n", job.ID, job.Kind, schedule, job.Agent, task)
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\n", job.ID, job.Kind, schedule, job.Agent, job.Task)
 	}
 	return nil
 }
