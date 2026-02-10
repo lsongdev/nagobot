@@ -72,7 +72,10 @@ func NewWebChannel(cfg *config.Config) Channel {
 	if addr == "" {
 		addr = webDefaultAddr
 	}
-	workspace, _ := cfg.WorkspacePath()
+	workspace, err := cfg.WorkspacePath()
+	if err != nil {
+		logger.Warn("web channel: failed to get workspace path", "err", err)
+	}
 
 	return &WebChannel{
 		addr:      addr,

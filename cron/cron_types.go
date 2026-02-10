@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -36,13 +37,16 @@ type Scheduler struct {
 	mu        sync.Mutex
 }
 
-func NewScheduler(storePath string, factory ThreadFactory) *Scheduler {
-	sch, _ := gocron.NewScheduler()
+func NewScheduler(storePath string, factory ThreadFactory) (*Scheduler, error) {
+	sch, err := gocron.NewScheduler()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gocron scheduler: %w", err)
+	}
 	return &Scheduler{
 		cron:      sch,
 		factory:   factory,
 		jobs:      make(map[string]Job),
 		cancels:   make(map[string]func()),
 		storePath: strings.TrimSpace(storePath),
-	}
+	}, nil
 }

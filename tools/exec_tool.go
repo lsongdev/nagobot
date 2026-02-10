@@ -90,12 +90,28 @@ func (t *ExecTool) Run(ctx context.Context, args json.RawMessage) string {
 	if t.restrictToWorkspace && t.workspace != "" {
 		effectiveDir := cmd.Dir
 		if effectiveDir == "" {
-			effectiveDir, _ = os.Getwd()
+			var err error
+			effectiveDir, err = os.Getwd()
+			if err != nil {
+				return fmt.Sprintf("Error: cannot determine working directory: %v", err)
+			}
 		}
-		absDir, _ := filepath.Abs(effectiveDir)
-		absDir, _ = filepath.EvalSymlinks(absDir)
-		absWorkspace, _ := filepath.Abs(t.workspace)
-		absWorkspace, _ = filepath.EvalSymlinks(absWorkspace)
+		absDir, err := filepath.Abs(effectiveDir)
+		if err != nil {
+			return fmt.Sprintf("Error: cannot resolve working directory %q: %v", effectiveDir, err)
+		}
+		absDir, err = filepath.EvalSymlinks(absDir)
+		if err != nil {
+			return fmt.Sprintf("Error: cannot resolve symlinks for %q: %v", absDir, err)
+		}
+		absWorkspace, err := filepath.Abs(t.workspace)
+		if err != nil {
+			return fmt.Sprintf("Error: cannot resolve workspace %q: %v", t.workspace, err)
+		}
+		absWorkspace, err = filepath.EvalSymlinks(absWorkspace)
+		if err != nil {
+			return fmt.Sprintf("Error: cannot resolve symlinks for workspace %q: %v", absWorkspace, err)
+		}
 		sep := string(filepath.Separator)
 		if absDir != absWorkspace && !strings.HasPrefix(absDir+sep, absWorkspace+sep) {
 			return fmt.Sprintf("Error: working directory %q is outside workspace %q (restrictToWorkspace is enabled)", effectiveDir, t.workspace)

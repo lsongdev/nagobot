@@ -32,8 +32,14 @@ func buildThreadManager(cfg *config.Config, enableSessions bool) (*thread.Manage
 		return nil, fmt.Errorf("failed to create default provider: %w", err)
 	}
 
-	skillsDir, _ := cfg.SkillsDir()
-	sessionsDir, _ := cfg.SessionsDir()
+	skillsDir, err := cfg.SkillsDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get skills directory: %w", err)
+	}
+	sessionsDir, err := cfg.SessionsDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sessions directory: %w", err)
+	}
 
 	skillRegistry := skills.NewRegistry()
 	if err := skillRegistry.LoadFromDirectory(skillsDir); err != nil {

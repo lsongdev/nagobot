@@ -176,14 +176,20 @@ func runOnboard(_ *cobra.Command, _ []string) error {
 
 	// --- create directories and files ---
 
-	configDir, _ := config.ConfigDir()
+	configDir, err := config.ConfigDir()
+	if err != nil {
+		return fmt.Errorf("failed to determine config directory: %w", err)
+	}
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 	if err := cfg.EnsureWorkspace(); err != nil {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
-	workspace, _ := cfg.WorkspacePath()
+	workspace, err := cfg.WorkspacePath()
+	if err != nil {
+		return fmt.Errorf("failed to determine workspace path: %w", err)
+	}
 	if err := createBootstrapFiles(workspace); err != nil {
 		return fmt.Errorf("failed to create bootstrap files: %w", err)
 	}

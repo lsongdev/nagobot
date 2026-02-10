@@ -26,7 +26,10 @@ type CronChannel struct {
 
 // NewCronChannel creates a CronChannel from config.
 func NewCronChannel(cfg *config.Config) Channel {
-	workspace, _ := cfg.WorkspacePath()
+	workspace, err := cfg.WorkspacePath()
+	if err != nil {
+		logger.Warn("cron channel: failed to get workspace path", "err", err)
+	}
 	ch := &CronChannel{
 		storePath: filepath.Join(workspace, "cron.jsonl"),
 		messages:  make(chan *Message, 64),
@@ -43,7 +46,11 @@ func (c *CronChannel) Start(ctx context.Context) error {
 		return "", nil // fire-and-forget
 	}
 
-	c.scheduler = cronpkg.NewScheduler(c.storePath, factory)
+	sch, err := cronpkg.NewScheduler(c.storePath, factory)
+	if err != nil {
+		return fmt.Errorf("failed to create cron scheduler: %w", err)
+	}
+	c.scheduler = sch
 	if err := c.scheduler.Load(); err != nil {
 		return fmt.Errorf("failed to load cron jobs: %w", err)
 	}
