@@ -176,6 +176,9 @@ func (d *Dispatcher) resolveAgentName(msg *channel.Message) (string, map[string]
 	}
 
 	agentName := strings.TrimSpace(msg.Metadata["agent"])
+	if agentName == "" && msg.UserID != "" && d.cfg.Channels != nil {
+		agentName = d.cfg.Channels.UserAgents[msg.UserID]
+	}
 	if agentName == "" {
 		return "", nil
 	}
