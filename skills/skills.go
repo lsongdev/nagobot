@@ -19,6 +19,7 @@ type Skill struct {
 	Prompt      string   `yaml:"prompt"`
 	Tags        []string `yaml:"tags,omitempty"`
 	Examples    []string `yaml:"examples,omitempty"`
+	Dir         string   `yaml:"-"` // Absolute path to skill directory (if directory-based).
 }
 
 // Registry holds loaded skills.
@@ -100,10 +101,27 @@ func loadSkillsFromDirectory(dir string) (map[string]*Skill, error) {
 
 	loaded := make(map[string]*Skill)
 	for _, entry := range entries {
+		// Directory-based skill: look for SKILL.md inside.
 		if entry.IsDir() {
+			skillFile := filepath.Join(dir, entry.Name(), "SKILL.md")
+			if _, statErr := os.Stat(skillFile); statErr != nil {
+				continue
+			}
+			skill, loadErr := loadMarkdownSkill(skillFile)
+			if loadErr != nil {
+				return nil, fmt.Errorf("failed to load skill %s/SKILL.md: %w", entry.Name(), loadErr)
+			}
+			if skill != nil {
+				if skill.Name == "" {
+					skill.Name = entry.Name()
+				}
+				skill.Dir = filepath.Join(dir, entry.Name())
+				loaded[skill.Name] = skill
+			}
 			continue
 		}
 
+		// Flat file skill (legacy compat).
 		name := entry.Name()
 		ext := strings.ToLower(filepath.Ext(name))
 

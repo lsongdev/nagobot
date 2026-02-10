@@ -1,5 +1,5 @@
 ---
-name: compress_context
+name: compress-context
 description: The guidance for compressing session context with simple backup and atomic replace.
 ---
 # Context Compression Skill

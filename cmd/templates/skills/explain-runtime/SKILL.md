@@ -1,5 +1,5 @@
 ---
-name: explain_runtime
+name: explain-runtime
 description: Guidance for explaining how nagobot works and is configured.
 ---
 # Runtime Explainer Skill

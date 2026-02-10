@@ -17,6 +17,7 @@ This project is evolving rapidly.
 - Providers: `deepseek`, `openrouter`, `anthropic`, `moonshot-cn`, `moonshot-global`
 - Tools
 - Skills
+  - context compression
 - Agent
 - Cron
 - Async

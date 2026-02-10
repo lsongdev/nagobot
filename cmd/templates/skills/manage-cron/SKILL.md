@@ -1,5 +1,5 @@
 ---
-name: manage_cron
+name: manage-cron
 description: Use this skill when you need to inspect, read, create, update, or delete scheduled cron jobs, including recurring and one-time tasks, under the project root path.
 ---
 # Manage Cron via File Editing

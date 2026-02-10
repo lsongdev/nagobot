@@ -13,9 +13,9 @@ import (
 
 // AgentDef represents an agent template file under workspace/agents.
 type AgentDef struct {
-	Name    string // Callable name used by spawn_thread.agent
-	Summary string // Short summary shown in system prompt context
-	Path    string // Full path to the template file
+	Name        string // Callable name used by spawn_thread.agent
+	Description string // Short description shown in system prompt context
+	Path        string // Full path to the template file
 }
 
 // AgentRegistry loads agent templates from workspace/agents.
@@ -46,12 +46,25 @@ func (r *AgentRegistry) load() {
 
 	next := make(map[string]*AgentDef)
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+		var path string
+		var fileName string
+
+		if entry.IsDir() {
+			// Directory-based: agents/<name>/<name>.md
+			dirName := entry.Name()
+			candidate := filepath.Join(r.agentsDir, dirName, dirName+".md")
+			if _, statErr := os.Stat(candidate); statErr != nil {
+				continue
+			}
+			path = candidate
+			fileName = dirName
+		} else if strings.HasSuffix(entry.Name(), ".md") {
+			// Flat file fallback: agents/<name>.md
+			path = filepath.Join(r.agentsDir, entry.Name())
+			fileName = strings.TrimSuffix(entry.Name(), ".md")
+		} else {
 			continue
 		}
-
-		path := filepath.Join(r.agentsDir, entry.Name())
-		fileName := strings.TrimSuffix(entry.Name(), ".md")
 
 		raw, readErr := os.ReadFile(path)
 		if readErr != nil {
@@ -69,11 +82,6 @@ func (r *AgentRegistry) load() {
 			name = fileName
 		}
 
-		summary := strings.TrimSpace(meta.Summary)
-		if summary == "" {
-			summary = strings.TrimSpace(meta.Description)
-		}
-
 		key := normalizeAgentName(name)
 		if _, exists := next[key]; exists {
 			logger.Warn("duplicate agent name, keeping first", "name", name, "path", path)
@@ -81,9 +89,9 @@ func (r *AgentRegistry) load() {
 		}
 
 		next[key] = &AgentDef{
-			Name:    name,
-			Summary: summary,
-			Path:    path,
+			Name:        name,
+			Description: strings.TrimSpace(meta.Description),
+			Path:        path,
 		}
 	}
 
@@ -138,8 +146,8 @@ func (r *AgentRegistry) BuildPromptSection() string {
 	var sb strings.Builder
 	sb.WriteString("Available agents (for spawn_thread.agent):\n")
 	for _, def := range defs {
-		if def.Summary != "" {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", def.Name, def.Summary))
+		if def.Description != "" {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", def.Name, def.Description))
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("- %s\n", def.Name))

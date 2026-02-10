@@ -1,6 +1,6 @@
 ---
 name: soul
-summary: Default orchestrator agent for user-facing conversations.
+description: Default orchestrator agent for user-facing conversations.
 ---
 
 # Soul

@@ -322,23 +322,48 @@ func createBootstrapFiles(workspace string) error {
 		}
 	}
 
-	// overwrite=true for all templates except USER.md
-	templates := []struct {
-		src, dst  string
-		overwrite bool
-	}{
-		{"SOUL.md", filepath.Join("agents", "soul.md"), true},
-		{"USER.md", "USER.md", false},
-		{"GENERAL.md", filepath.Join("agents", "GENERAL.md"), true},
-		{"EXPLAIN_RUNTIME.md", filepath.Join(skillsDir, "EXPLAIN_RUNTIME.md"), true},
-		{"COMPRESS_CONTEXT.md", filepath.Join(skillsDir, "COMPRESS_CONTEXT.md"), true},
-		{"MANAGE_CRON.md", filepath.Join(skillsDir, "MANAGE_CRON.md"), true},
+	// USER.md is the only flat template; skip if it already exists.
+	if err := writeTemplate(workspace, "USER.md", "USER.md", false); err != nil {
+		return err
 	}
-	for _, t := range templates {
-		if err := writeTemplate(workspace, t.src, t.dst, t.overwrite); err != nil {
+
+	// Copy embedded agent and skill directories into workspace.
+	if err := copyEmbeddedDir("templates/agents", filepath.Join(workspace, "agents")); err != nil {
+		return err
+	}
+	if err := copyEmbeddedDir("templates/skills", filepath.Join(workspace, skillsDir)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// copyEmbeddedDir recursively copies an embedded directory tree to dest,
+// always overwriting existing files.
+func copyEmbeddedDir(embeddedRoot, dest string) error {
+	entries, err := templateFS.ReadDir(embeddedRoot)
+	if err != nil {
+		return fmt.Errorf("read embedded dir %s: %w", embeddedRoot, err)
+	}
+	for _, entry := range entries {
+		srcPath := embeddedRoot + "/" + entry.Name()
+		dstPath := filepath.Join(dest, entry.Name())
+		if entry.IsDir() {
+			if err := os.MkdirAll(dstPath, 0755); err != nil {
+				return err
+			}
+			if err := copyEmbeddedDir(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		data, err := templateFS.ReadFile(srcPath)
+		if err != nil {
+			return fmt.Errorf("read embedded file %s: %w", srcPath, err)
+		}
+		if err := os.WriteFile(dstPath, data, 0644); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }

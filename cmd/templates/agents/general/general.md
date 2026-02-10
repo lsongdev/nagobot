@@ -1,6 +1,6 @@
 ---
 name: general
-summary: General-purpose helper agent for broad tasks.
+description: General-purpose helper agent for broad tasks.
 ---
 
 # General Agent

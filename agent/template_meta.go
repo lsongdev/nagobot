@@ -8,7 +8,6 @@ import (
 
 type templateMeta struct {
 	Name        string `yaml:"name"`
-	Summary     string `yaml:"summary"`
 	Description string `yaml:"description"`
 }
 
