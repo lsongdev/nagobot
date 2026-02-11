@@ -125,26 +125,14 @@ type SessionFileError struct {
 	ParseError string `json:"parseError" yaml:"parse_error"`
 }
 
-// CronInfo contains cron file diagnostics and parsed jobs.
+// CronInfo contains cron file diagnostics.
 type CronInfo struct {
-	Path          string        `json:"path,omitempty" yaml:"path,omitempty"`
-	Exists        bool          `json:"exists" yaml:"exists"`
-	FileSizeBytes int64         `json:"fileSizeBytes,omitempty" yaml:"file_size_bytes,omitempty"`
-	JobsCount     int           `json:"jobsCount,omitempty" yaml:"jobs_count,omitempty"`
-	UpdatedAt     string        `json:"updatedAt,omitempty" yaml:"updated_at,omitempty"`
-	ParseError    string        `json:"parseError,omitempty" yaml:"parse_error,omitempty"`
-	Jobs          []CronJobInfo `json:"jobs,omitempty" yaml:"jobs,omitempty"`
-}
-
-// CronJobInfo is a compact cron job summary for health output.
-type CronJobInfo struct {
-	ID                string `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind              string `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Expr              string `json:"expr,omitempty" yaml:"expr,omitempty"`
-	AtTime            string `json:"atTime,omitempty" yaml:"at_time,omitempty"`
-	Agent             string `json:"agent,omitempty" yaml:"agent,omitempty"`
-	CreatorSessionKey string `json:"creatorSessionKey,omitempty" yaml:"creator_session_key,omitempty"`
-	Silent            bool   `json:"silent" yaml:"silent"`
+	Path          string `json:"path,omitempty" yaml:"path,omitempty"`
+	Exists        bool   `json:"exists" yaml:"exists"`
+	FileSizeBytes int64  `json:"fileSizeBytes,omitempty" yaml:"file_size_bytes,omitempty"`
+	JobsCount     int    `json:"jobsCount,omitempty" yaml:"jobs_count,omitempty"`
+	UpdatedAt     string `json:"updatedAt,omitempty" yaml:"updated_at,omitempty"`
+	ParseError    string `json:"parseError,omitempty" yaml:"parse_error,omitempty"`
 }
 
 // WorkspaceTree contains a bounded tree snapshot for workspace diagnostics.
