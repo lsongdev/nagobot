@@ -78,7 +78,7 @@ func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	const (
-		treeDepth      = 3
+		treeDepth      = 1
 		treeMaxEntries = 200
 	)
 

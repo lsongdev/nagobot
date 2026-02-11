@@ -8,7 +8,7 @@ import (
 
 func buildWorkspaceTree(root string, depth, maxEntries int) *WorkspaceTree {
 	if depth <= 0 {
-		depth = 1
+		depth = 3
 	}
 	if maxEntries <= 0 {
 		maxEntries = 50
