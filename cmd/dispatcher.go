@@ -74,7 +74,6 @@ func (d *Dispatcher) dispatch(_ context.Context, ch channel.Channel, msg *channe
 		Source:    source,
 		Message:   userMessage,
 		Sink:      sink,
-		SinkLabel: msg.ChannelID,
 		AgentName: agentName,
 		Vars:      vars,
 	})
@@ -131,7 +130,7 @@ func (d *Dispatcher) buildSink(ch channel.Channel, msg *channel.Message) thread.
 
 	manager := d.channels
 	if manager == nil || msg == nil {
-		return nil
+		return thread.Sink{}
 	}
 
 	channelName := ch.Name()
@@ -140,11 +139,14 @@ func (d *Dispatcher) buildSink(ch channel.Channel, msg *channel.Message) thread.
 		replyTo = strings.TrimSpace(msg.ReplyTo)
 	}
 
-	return func(ctx context.Context, response string) error {
-		if strings.TrimSpace(response) == "" {
-			return nil
-		}
-		return manager.SendTo(ctx, channelName, response, replyTo)
+	return thread.Sink{
+		Label: "your response will be sent to the user via " + channelName,
+		Send: func(ctx context.Context, response string) error {
+			if strings.TrimSpace(response) == "" {
+				return nil
+			}
+			return manager.SendTo(ctx, channelName, response, replyTo)
+		},
 	}
 }
 
@@ -152,27 +154,39 @@ func (d *Dispatcher) buildSink(ch channel.Channel, msg *channel.Message) thread.
 // with the result.
 func (d *Dispatcher) buildCronSink(msg *channel.Message) thread.Sink {
 	if msg == nil {
-		return nil
+		return thread.Sink{}
 	}
 
 	silent := msg.Metadata["silent"] == "true"
 	creatorKey := strings.TrimSpace(msg.Metadata["creator_session_key"])
 	jobID := strings.TrimSpace(msg.Metadata["job_id"])
 
-	return func(ctx context.Context, response string) error {
-		if silent || creatorKey == "" || strings.TrimSpace(response) == "" {
+	if silent {
+		return thread.Sink{Label: "cron silent, result will not be delivered"}
+	}
+
+	label := "your response will be forwarded to session " + creatorKey
+	if creatorKey == "" {
+		label = "cron task, no creator session configured"
+	}
+
+	return thread.Sink{
+		Label: label,
+		Send: func(ctx context.Context, response string) error {
+			if creatorKey == "" || strings.TrimSpace(response) == "" {
+				return nil
+			}
+			wakeMsg := fmt.Sprintf(
+				"[Cron job completed]\n- id: %s\n- result:\n%s",
+				jobID,
+				strings.TrimSpace(response),
+			)
+			d.threads.Wake(creatorKey, &thread.WakeMessage{
+				Source:  "cron_finished",
+				Message: wakeMsg,
+			})
 			return nil
-		}
-		wakeMsg := fmt.Sprintf(
-			"[Cron job completed]\n- id: %s\n- result:\n%s",
-			jobID,
-			strings.TrimSpace(response),
-		)
-		d.threads.Wake(creatorKey, &thread.WakeMessage{
-			Source:  "cron_finished",
-			Message: wakeMsg,
-		})
-		return nil
+		},
 	}
 }
 

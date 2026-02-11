@@ -47,19 +47,27 @@ func (t *Thread) RunOnce(ctx context.Context) {
 
 		// Use per-wake sink; fall back to thread's default sink.
 		sink := msg.Sink
-		if sink == nil {
+		if sink.IsZero() {
 			sink = t.defaultSink
 		}
 
-		userMessage := buildWakePayload(msg.Source, msg.Message, t.id, t.sessionKey)
+		// Resolve delivery label for the AI prompt.
+		deliveryLabel := ""
+		if !msg.Sink.IsZero() {
+			deliveryLabel = msg.Sink.Label
+		} else if !t.defaultSink.IsZero() {
+			deliveryLabel = t.defaultSink.Label
+		}
+
+		userMessage := buildWakePayload(msg.Source, msg.Message, t.id, t.sessionKey, deliveryLabel)
 		response, err := t.run(ctx, userMessage)
 		if err != nil {
 			logger.Error("thread run error", "threadID", t.id, "sessionKey", t.sessionKey, "source", msg.Source, "err", err)
 			response = fmt.Sprintf("[Error] %v", err)
 		}
 
-		if sink != nil && strings.TrimSpace(response) != "" {
-			if sinkErr := sink(ctx, response); sinkErr != nil {
+		if !sink.IsZero() && strings.TrimSpace(response) != "" {
+			if sinkErr := sink.Send(ctx, response); sinkErr != nil {
 				logger.Error("sink delivery error", "threadID", t.id, "sessionKey", t.sessionKey, "err", sinkErr)
 			}
 		}
@@ -69,7 +77,7 @@ func (t *Thread) RunOnce(ctx context.Context) {
 }
 
 // buildWakePayload constructs the user message from a wake source and message.
-func buildWakePayload(source, message, threadID, sessionKey string) string {
+func buildWakePayload(source, message, threadID, sessionKey, deliveryLabel string) string {
 	source = strings.TrimSpace(source)
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -91,11 +99,18 @@ func buildWakePayload(source, message, threadID, sessionKey string) string {
 		now.Format("-07:00"),
 	)
 
+	var deliveryHint string
+	if deliveryLabel != "" {
+		deliveryHint = fmt.Sprintf("[Delivery: %s]", deliveryLabel)
+	} else {
+		deliveryHint = "[Delivery: no auto-delivery, use tools to send messages if needed]"
+	}
+
 	action := wakeActionHint(source)
 	if action == "" {
-		return wakeHeader + "\n" + message
+		return wakeHeader + "\n" + deliveryHint + "\n" + message
 	}
-	return wakeHeader + "\n[Wake Action]\n" + action + "\n\n" + message
+	return wakeHeader + "\n" + deliveryHint + "\n[Wake Action]\n" + action + "\n\n" + message
 }
 
 func wakeActionHint(source string) string {

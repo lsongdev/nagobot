@@ -79,10 +79,13 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	t.Enqueue(&thread.WakeMessage{
 		Source:  "user_message",
 		Message: messageFlag,
-		Sink: func(_ context.Context, response string) error {
-			result = response
-			close(done)
-			return nil
+		Sink: thread.Sink{
+			Label: "your response will be printed to stdout",
+			Send: func(_ context.Context, response string) error {
+				result = response
+				close(done)
+				return nil
+			},
 		},
 	})
 	t.RunOnce(context.Background())

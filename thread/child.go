@@ -34,18 +34,21 @@ func (t *Thread) SpawnChild(ctx context.Context, agentName string, task string) 
 	child.Enqueue(&WakeMessage{
 		Source:  "child_task",
 		Message: task,
-		Sink: func(_ context.Context, response string) error {
-			var message string
-			if strings.TrimSpace(response) != "" {
-				message = fmt.Sprintf("Child %s completed:\n%s", child.id, response)
-			} else {
-				message = fmt.Sprintf("Child %s completed (no output)", child.id)
-			}
-			parentThread.Enqueue(&WakeMessage{
-				Source:  "child_completed",
-				Message: message,
-			})
-			return nil
+		Sink: Sink{
+			Label: "your response will be forwarded to parent thread",
+			Send: func(_ context.Context, response string) error {
+				var message string
+				if strings.TrimSpace(response) != "" {
+					message = fmt.Sprintf("Child %s completed:\n%s", child.id, response)
+				} else {
+					message = fmt.Sprintf("Child %s completed (no output)", child.id)
+				}
+				parentThread.Enqueue(&WakeMessage{
+					Source:  "child_completed",
+					Message: message,
+				})
+				return nil
+			},
 		},
 	})
 

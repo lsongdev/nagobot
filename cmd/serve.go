@@ -133,11 +133,14 @@ func buildDefaultSinkFor(chMgr *channel.Manager, cfg *config.Config) func(string
 		if strings.HasPrefix(sessionKey, "telegram:") {
 			userID := strings.TrimPrefix(sessionKey, "telegram:")
 			if userID != "" {
-				return func(ctx context.Context, response string) error {
-					if strings.TrimSpace(response) == "" {
-						return nil
-					}
-					return chMgr.SendTo(ctx, "telegram", response, userID)
+				return thread.Sink{
+					Label: "your response will be sent to telegram user " + userID,
+					Send: func(ctx context.Context, response string) error {
+						if strings.TrimSpace(response) == "" {
+							return nil
+						}
+						return chMgr.SendTo(ctx, "telegram", response, userID)
+					},
 				}
 			}
 		}
@@ -145,25 +148,31 @@ func buildDefaultSinkFor(chMgr *channel.Manager, cfg *config.Config) func(string
 		// "main" → telegram admin > cli.
 		if sessionKey == "main" {
 			if _, ok := chMgr.Get("telegram"); ok && adminID != "" {
-				return func(ctx context.Context, response string) error {
-					if strings.TrimSpace(response) == "" {
-						return nil
-					}
-					return chMgr.SendTo(ctx, "telegram", response, adminID)
+				return thread.Sink{
+					Label: "your response will be sent to telegram admin",
+					Send: func(ctx context.Context, response string) error {
+						if strings.TrimSpace(response) == "" {
+							return nil
+						}
+						return chMgr.SendTo(ctx, "telegram", response, adminID)
+					},
 				}
 			}
 			if _, ok := chMgr.Get("cli"); ok {
-				return func(ctx context.Context, response string) error {
-					if strings.TrimSpace(response) == "" {
+				return thread.Sink{
+					Label: "your response will be printed to cli",
+					Send: func(ctx context.Context, response string) error {
+						if strings.TrimSpace(response) == "" {
+							return nil
+						}
+						fmt.Println(response)
 						return nil
-					}
-					fmt.Println(response)
-					return nil
+					},
 				}
 			}
 		}
 
-		return nil
+		return thread.Sink{}
 	}
 }
 
