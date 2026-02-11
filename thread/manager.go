@@ -2,7 +2,6 @@ package thread
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -37,12 +36,29 @@ func NewManager(cfg *ThreadConfig) *Manager {
 // runs them up to maxConcurrency in parallel. Blocks until ctx is cancelled.
 func (m *Manager) Run(ctx context.Context) {
 	sem := make(chan struct{}, m.maxConcurrency)
+	ticker := time.NewTicker(gcInterval)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-m.signal:
 			m.scheduleReady(ctx, sem)
+		case <-ticker.C:
+			m.gc()
+		}
+	}
+}
+
+// gc removes idle threads that have been inactive beyond the TTL.
+func (m *Manager) gc() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for key, t := range m.threads {
+		if t.state == threadIdle && !t.hasMessages() && time.Since(t.lastActiveAt) > defaultThreadTTL {
+			delete(m.threads, key)
+			logger.Debug("thread gc", "sessionKey", key, "threadID", t.id)
 		}
 	}
 }
@@ -65,6 +81,7 @@ func (m *Manager) scheduleReady(ctx context.Context, sem chan struct{}) {
 				thread.RunOnce(ctx)
 
 				m.mu.Lock()
+				thread.lastActiveAt = time.Now()
 				thread.state = threadIdle
 				hasMore := thread.hasMessages()
 				m.mu.Unlock()
@@ -115,12 +132,13 @@ func (m *Manager) NewThread(sessionKey, agentName string) (*Thread, error) {
 	}
 
 	t := &Thread{
-		id:         fmt.Sprintf("thread-%d", time.Now().UnixNano()),
-		mgr:        m,
-		sessionKey: strings.TrimSpace(sessionKey),
-		state:      threadIdle,
-		inbox:      make(chan *WakeMessage, defaultInboxSize),
-		signal:     m.signal,
+		id:           "thread-" + RandomHex(4),
+		mgr:          m,
+		sessionKey:   strings.TrimSpace(sessionKey),
+		state:        threadIdle,
+		inbox:        make(chan *WakeMessage, defaultInboxSize),
+		signal:       m.signal,
+		lastActiveAt: time.Now(),
 	}
 	a, err := m.cfg.Agents.New(agentName)
 	if err != nil {

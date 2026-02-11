@@ -2,6 +2,7 @@ package thread
 
 import (
 	"sync"
+	"time"
 
 	"github.com/linanwx/nagobot/agent"
 	"github.com/linanwx/nagobot/provider"
@@ -28,6 +29,8 @@ const (
 const (
 	defaultMaxConcurrency = 16
 	defaultInboxSize      = 64
+	defaultThreadTTL      = 30 * time.Minute
+	gcInterval            = 5 * time.Minute
 )
 
 // ThreadConfig contains shared dependencies for creating threads.
@@ -63,9 +66,10 @@ type Thread struct {
 	inbox  chan *WakeMessage // Buffered wake queue.
 	signal chan struct{}     // Shared with Manager for notification.
 
-	mu          sync.Mutex
-	hooks       []turnHook
-	defaultSink Sink // Fallback sink when WakeMessage.Sink is nil.
+	mu           sync.Mutex
+	hooks        []turnHook
+	defaultSink  Sink      // Fallback sink when WakeMessage.Sink is nil.
+	lastActiveAt time.Time // Last time this thread completed work.
 }
 
 // cfg returns the shared config from the manager.
