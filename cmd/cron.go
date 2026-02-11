@@ -217,19 +217,19 @@ func init() {
 
 var (
 	commonAgent             string
-	commonCreatorSessionKey string
+	commonReportToSession string
 	commonSilent            bool
 )
 
 func addCommonJobFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&commonAgent, "agent", "", "Agent template name")
-	cmd.Flags().StringVar(&commonCreatorSessionKey, "creator-session-key", "", "Session key to wake on completion")
+	cmd.Flags().StringVar(&commonReportToSession, "report-to-session", "", "Session key to receive the result on completion (default: main)")
 	cmd.Flags().BoolVar(&commonSilent, "silent", false, "Suppress result delivery")
 }
 
 func applyCommonJobFlags(job *cronsvc.Job) {
 	job.Agent = strings.TrimSpace(commonAgent)
-	job.CreatorSessionKey = strings.TrimSpace(commonCreatorSessionKey)
+	job.ReportToSession = strings.TrimSpace(commonReportToSession)
 	job.Silent = commonSilent
 }
 

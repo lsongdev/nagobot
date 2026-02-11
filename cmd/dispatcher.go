@@ -158,22 +158,20 @@ func (d *Dispatcher) buildCronSink(msg *channel.Message) thread.Sink {
 	}
 
 	silent := msg.Metadata["silent"] == "true"
-	creatorKey := strings.TrimSpace(msg.Metadata["creator_session_key"])
+	reportTo := strings.TrimSpace(msg.Metadata["report_to_session"])
+	if reportTo == "" {
+		reportTo = "main"
+	}
 	jobID := strings.TrimSpace(msg.Metadata["job_id"])
 
 	if silent {
 		return thread.Sink{Label: "cron silent, result will not be delivered"}
 	}
 
-	label := "your response will be forwarded to session " + creatorKey
-	if creatorKey == "" {
-		label = "cron task, no creator session configured"
-	}
-
 	return thread.Sink{
-		Label: label,
+		Label: "your response will be forwarded to session " + reportTo,
 		Send: func(ctx context.Context, response string) error {
-			if creatorKey == "" || strings.TrimSpace(response) == "" {
+			if strings.TrimSpace(response) == "" {
 				return nil
 			}
 			wakeMsg := fmt.Sprintf(
@@ -181,7 +179,7 @@ func (d *Dispatcher) buildCronSink(msg *channel.Message) thread.Sink {
 				jobID,
 				strings.TrimSpace(response),
 			)
-			d.threads.Wake(creatorKey, &thread.WakeMessage{
+			d.threads.Wake(reportTo, &thread.WakeMessage{
 				Source:  "cron_finished",
 				Message: wakeMsg,
 			})
