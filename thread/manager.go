@@ -156,21 +156,36 @@ func (m *Manager) ThreadStatus(id string) (tools.ThreadInfo, bool) {
 
 	for _, t := range m.threads {
 		if t.id == id {
-			info := tools.ThreadInfo{ID: t.id}
-			switch t.state {
-			case threadRunning:
-				info.State = "running"
-				info.Pending = len(t.inbox)
-			default:
-				if t.hasMessages() {
-					info.State = "pending"
-					info.Pending = len(t.inbox)
-				} else {
-					info.State = "completed"
-				}
-			}
-			return info, true
+			return threadInfo(t), true
 		}
 	}
 	return tools.ThreadInfo{}, false
+}
+
+// ListThreads returns a summary of all active threads.
+func (m *Manager) ListThreads() []tools.ThreadInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	list := make([]tools.ThreadInfo, 0, len(m.threads))
+	for _, t := range m.threads {
+		list = append(list, threadInfo(t))
+	}
+	return list
+}
+
+func threadInfo(t *Thread) tools.ThreadInfo {
+	info := tools.ThreadInfo{ID: t.id, SessionKey: t.sessionKey}
+	switch t.state {
+	case threadRunning:
+		info.State = "running"
+	default:
+		if t.hasMessages() {
+			info.State = "pending"
+		} else {
+			info.State = "idle"
+		}
+	}
+	info.Pending = len(t.inbox)
+	return info
 }

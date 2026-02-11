@@ -1,6 +1,10 @@
 package health
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/linanwx/nagobot/thread/msg"
+)
 
 // Snapshot is a runtime health snapshot of the current process.
 type Snapshot struct {
@@ -18,7 +22,8 @@ type Snapshot struct {
 	Sessions      *SessionsInfo  `json:"sessions,omitempty" yaml:"sessions,omitempty"`
 	Channels      *ChannelsInfo   `json:"channels,omitempty" yaml:"channels,omitempty"`
 	Cron          *CronInfo      `json:"cron,omitempty" yaml:"cron,omitempty"`
-	WorkspaceTree *WorkspaceTree `json:"workspaceTree,omitempty" yaml:"workspace_tree,omitempty"`
+	ActiveThreads []msg.ThreadInfo `json:"activeThreads,omitempty" yaml:"active_threads,omitempty"`
+	WorkspaceTree *WorkspaceTree  `json:"workspaceTree,omitempty" yaml:"workspace_tree,omitempty"`
 }
 
 // MemoryInfo contains memory statistics in MB.

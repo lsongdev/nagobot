@@ -134,6 +134,9 @@ func (t *Thread) buildTools() *tools.Registry {
 		ProviderName: cfg.ProviderName,
 		ModelName:    cfg.ModelName,
 		Channels:     cfg.HealthChannels,
+		ThreadsListFn: func() []tools.ThreadInfo {
+			return t.mgr.ListThreads()
+		},
 		CtxFn: func() tools.HealthRuntimeContext {
 			sessionPath, _ := t.sessionFilePath()
 			t.mu.Lock()

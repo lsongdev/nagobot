@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/linanwx/nagobot/provider"
+	"github.com/linanwx/nagobot/thread/msg"
 )
 
 // ThreadSpawner is implemented by thread.Thread to spawn child threads.
@@ -14,16 +15,13 @@ type ThreadSpawner interface {
 	SpawnChild(ctx context.Context, agentName string, task string) (string, error)
 }
 
-// ThreadInfo holds the status of a thread.
-type ThreadInfo struct {
-	ID      string `json:"id"`
-	State   string `json:"state"`   // "running", "pending", "completed"
-	Pending int    `json:"pending"` // number of queued messages
-}
+// ThreadInfo is an alias for msg.ThreadInfo.
+type ThreadInfo = msg.ThreadInfo
 
-// ThreadChecker checks the status of a thread by ID.
+// ThreadChecker checks the status of threads.
 type ThreadChecker interface {
 	ThreadStatus(id string) (ThreadInfo, bool)
+	ListThreads() []ThreadInfo
 }
 
 // SpawnThreadTool delegates a task to a child thread.

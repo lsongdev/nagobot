@@ -38,8 +38,9 @@ type HealthTool struct {
 	SkillsRoot   string
 	ProviderName string
 	ModelName    string
-	Channels     *HealthChannelsInfo
-	CtxFn        HealthContextProvider
+	Channels      *HealthChannelsInfo
+	CtxFn         HealthContextProvider
+	ThreadsListFn func() []ThreadInfo
 }
 
 // Def returns the tool definition.
@@ -101,6 +102,10 @@ func (t *HealthTool) Run(ctx context.Context, args json.RawMessage) string {
 		TreeDepth:      treeDepth,
 		TreeMaxEntries: treeMaxEntries,
 	})
+
+	if t.ThreadsListFn != nil {
+		snapshot.ActiveThreads = t.ThreadsListFn()
+	}
 
 	if strings.EqualFold(a.Format, "json") {
 		data, err := json.MarshalIndent(snapshot, "", "  ")
