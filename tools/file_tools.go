@@ -122,13 +122,12 @@ func (t *ReadFileTool) Run(ctx context.Context, args json.RawMessage) string {
 	}
 
 	var sb strings.Builder
+	if endIdx < totalLines {
+		fmt.Fprintf(&sb, "[Showing lines %d-%d of %d total. Use offset=%d to read more.]\n\n",
+			offset, endIdx, totalLines, endIdx+1)
+	}
 	for i := startIdx; i < endIdx; i++ {
 		fmt.Fprintf(&sb, "%d\t%s\n", i+1, allLines[i])
-	}
-
-	if endIdx < totalLines {
-		fmt.Fprintf(&sb, "\n[File too large: showing lines %d-%d of %d total. Use offset=%d to read more.]",
-			offset, endIdx, totalLines, endIdx+1)
 	}
 
 	return sb.String()
