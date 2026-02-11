@@ -170,7 +170,7 @@ func (d *Dispatcher) buildCronSink(msg *channel.Message) thread.Sink {
 	}
 
 	silent := msg.Metadata["silent"] == "true"
-	reportTo := strings.TrimSpace(msg.Metadata["report_to_session"])
+	reportTo := strings.TrimSpace(msg.Metadata["wake_session"])
 	if reportTo == "" {
 		reportTo = "main"
 	}
@@ -181,7 +181,7 @@ func (d *Dispatcher) buildCronSink(msg *channel.Message) thread.Sink {
 	}
 
 	return thread.Sink{
-		Label: "your response will be forwarded to session " + reportTo,
+		Label: "your task will be injected into session " + reportTo + " which will wake, execute, and deliver the result to the user",
 		Send: func(ctx context.Context, response string) error {
 			if strings.TrimSpace(response) == "" {
 				return nil
@@ -222,27 +222,12 @@ func (d *Dispatcher) resolveAgentName(msg *channel.Message) (string, map[string]
 	return agentName, vars
 }
 
-// preprocessMessage formats media metadata into the user message.
+// preprocessMessage prepends media summary (built by the channel) to the user message.
 func (d *Dispatcher) preprocessMessage(msg *channel.Message) string {
-	userMessage := msg.Text
-	if mediaType := msg.Metadata["media_type"]; mediaType != "" {
-		var mediaParts []string
-		mediaParts = append(mediaParts, fmt.Sprintf("media_type: %s", mediaType))
-		if fn := msg.Metadata["file_name"]; fn != "" {
-			mediaParts = append(mediaParts, fmt.Sprintf("file_name: %s", fn))
-		}
-		if mime := msg.Metadata["mime_type"]; mime != "" {
-			mediaParts = append(mediaParts, fmt.Sprintf("mime_type: %s", mime))
-		}
-		if url := msg.Metadata["file_url"]; url != "" {
-			mediaParts = append(mediaParts, fmt.Sprintf("file_url: %s", url))
-		}
-		if dur := msg.Metadata["duration"]; dur != "" {
-			mediaParts = append(mediaParts, fmt.Sprintf("duration: %ss", dur))
-		}
-		userMessage = fmt.Sprintf("[Media: %s]\n%s\n\n%s", mediaType, strings.Join(mediaParts, "\n"), msg.Text)
+	if summary := msg.Metadata["media_summary"]; summary != "" {
+		return summary + "\n\n" + msg.Text
 	}
-	return userMessage
+	return msg.Text
 }
 
 // wakeSource returns the wake source string for a channel.

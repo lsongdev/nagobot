@@ -123,7 +123,7 @@ func (c *CronChannel) buildMessage(job *cronpkg.Job) *Message {
 	if job != nil {
 		metadata["agent"] = strings.TrimSpace(job.Agent)
 		metadata["task"] = strings.TrimSpace(job.Task)
-		metadata["report_to_session"] = strings.TrimSpace(job.ReportToSession)
+		metadata["wake_session"] = strings.TrimSpace(job.WakeSession)
 		metadata["silent"] = strconv.FormatBool(job.Silent)
 	}
 
@@ -146,14 +146,14 @@ func buildCronStartMessage(job *cronpkg.Job) string {
 	}
 
 	return fmt.Sprintf(
-		"[Cron wake notice]\nReason: scheduled cron task triggered.\nRaw job config:\n- id: %s\n- kind: %s\n- expr: %s\n- at_time: %s\n- task: %s\n- agent: %s\n- report_to_session: %s\n- silent: %t\n- created_at: %s",
+		"[Cron wake notice]\nReason: scheduled cron task triggered.\nRaw job config:\n- id: %s\n- kind: %s\n- expr: %s\n- at_time: %s\n- task: %s\n- agent: %s\n- wake_session: %s\n- silent: %t\n- created_at: %s",
 		strings.TrimSpace(job.ID),
 		strings.TrimSpace(job.Kind),
 		strings.TrimSpace(job.Expr),
 		atTime,
 		strings.TrimSpace(job.Task),
 		strings.TrimSpace(job.Agent),
-		strings.TrimSpace(job.ReportToSession),
+		strings.TrimSpace(job.WakeSession),
 		job.Silent,
 		job.CreatedAt.UTC().Format(time.RFC3339),
 	)

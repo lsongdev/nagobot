@@ -30,7 +30,7 @@ func Normalize(job Job) Job {
 	job.Expr = strings.TrimSpace(job.Expr)
 	job.Task = strings.TrimSpace(job.Task)
 	job.Agent = strings.TrimSpace(job.Agent)
-	job.ReportToSession = strings.TrimSpace(job.ReportToSession)
+	job.WakeSession = strings.TrimSpace(job.WakeSession)
 	if !job.AtTime.IsZero() {
 		job.AtTime = job.AtTime.UTC()
 	}

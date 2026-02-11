@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/linanwx/nagobot/config"
 )
@@ -11,6 +13,7 @@ import (
 const (
 	sdkMaxRetries              = 2
 	anthropicFallbackMaxTokens = 1024
+	oauthExpiryGraceSec        = 30 // refresh token 30s before actual expiry
 )
 
 // FactoryConfig stores provider-level credentials and endpoint settings.
@@ -21,6 +24,7 @@ type FactoryConfig struct {
 
 // Factory creates provider instances for the requested provider/model.
 type Factory struct {
+	cfg              *config.Config // live config for OAuth token re-resolution
 	configs          map[string]FactoryConfig
 	defaultProv      string
 	defaultModel     string
@@ -53,6 +57,7 @@ func NewFactory(cfg *config.Config) (*Factory, error) {
 	temperature := cfg.GetTemperature()
 
 	f := &Factory{
+		cfg:              cfg,
 		configs:          make(map[string]FactoryConfig),
 		defaultProv:      defaultProv,
 		defaultModel:     defaultModel,
@@ -106,9 +111,14 @@ func (f *Factory) Create(providerName, modelType string) (Provider, error) {
 		return nil, err
 	}
 
-	provCfg, ok := f.configs[providerName]
-	if !ok || strings.TrimSpace(provCfg.APIKey) == "" {
-		return nil, fmt.Errorf("%s API key not configured", providerName)
+	// Re-resolve API key from config to pick up OAuth token refreshes.
+	apiKey := providerAPIKey(f.cfg, providerName)
+	provCfg, hasCfg := f.configs[providerName]
+	if apiKey == "" {
+		if !hasCfg || strings.TrimSpace(provCfg.APIKey) == "" {
+			return nil, fmt.Errorf("%s API key not configured", providerName)
+		}
+		apiKey = provCfg.APIKey
 	}
 	reg, ok := providerRegistry[providerName]
 	if !ok {
@@ -123,7 +133,8 @@ func (f *Factory) Create(providerName, modelType string) (Provider, error) {
 		modelName = f.defaultModelName
 	}
 
-	return reg.Constructor(provCfg.APIKey, provCfg.APIBase, modelType, modelName, f.maxTokens, f.temperature), nil
+	apiBase := provCfg.APIBase
+	return reg.Constructor(apiKey, apiBase, modelType, modelName, f.maxTokens, f.temperature), nil
 }
 
 func providerAPIKey(cfg *config.Config, providerName string) string {
@@ -131,15 +142,57 @@ func providerAPIKey(cfg *config.Config, providerName string) string {
 	if !ok {
 		return ""
 	}
+
+	// 1. Environment variable override.
 	if reg.EnvKey != "" {
 		if v := strings.TrimSpace(os.Getenv(reg.EnvKey)); v != "" {
 			return v
 		}
 	}
+
+	// 2. OAuth token (auto-refresh if expired).
+	if token := cfg.GetOAuthToken(providerName); token != nil && token.AccessToken != "" {
+		if token.ExpiresAt > 0 && time.Now().Unix()+oauthExpiryGraceSec > token.ExpiresAt {
+			// Token expired: try refresh if possible (serialized to avoid races).
+			if token.RefreshToken != "" {
+				oauthRefreshMu.Lock()
+				// Re-check after acquiring lock: another goroutine may have refreshed.
+				if t := cfg.GetOAuthToken(providerName); t != nil && t.AccessToken != "" &&
+					(t.ExpiresAt == 0 || time.Now().Unix()+oauthExpiryGraceSec <= t.ExpiresAt) {
+					oauthRefreshMu.Unlock()
+					return t.AccessToken
+				}
+				refreshed := oauthRefresher(cfg, providerName)
+				oauthRefreshMu.Unlock()
+				if refreshed != "" {
+					return refreshed
+				}
+			}
+			// Expired and refresh failed or unavailable — fall through to static key.
+		} else {
+			return token.AccessToken
+		}
+	}
+
+	// 3. Static API key from config.
 	if providerCfg := providerConfigFor(cfg, providerName); providerCfg != nil {
 		return strings.TrimSpace(providerCfg.APIKey)
 	}
 	return ""
+}
+
+// oauthRefreshMu protects concurrent access to the refresh flow.
+var oauthRefreshMu sync.Mutex
+
+// oauthRefresher refreshes an expired OAuth token. Set by cmd package via SetOAuthRefresher.
+var oauthRefresher = func(cfg *config.Config, providerName string) string {
+	return "" // no-op default
+}
+
+// SetOAuthRefresher sets the function used to refresh expired OAuth tokens.
+// Must be called during init(), before any concurrent access.
+func SetOAuthRefresher(fn func(*config.Config, string) string) {
+	oauthRefresher = fn
 }
 
 func providerAPIBase(cfg *config.Config, providerName string) string {

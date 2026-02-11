@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
+	"time"
 
 	"github.com/go-lark/lark"
 	"github.com/linanwx/nagobot/config"
@@ -18,21 +19,27 @@ import (
 const (
 	feishuMessageBufferSize = 100
 	feishuMaxMessageLength  = 4000
+	feishuMaxBodySize       = 1 << 20 // 1MB
+	feishuDedupTTL          = 5 * time.Minute
 )
 
 // FeishuChannel implements the Channel interface for Feishu (Lark).
 type FeishuChannel struct {
-	appID, appSecret       string
-	verificationToken      string
-	encryptKey             string
-	webhookAddr            string
-	bot                    *lark.Bot
-	server                 *http.Server
-	messages               chan *Message
-	done                   chan struct{}
-	wg                     sync.WaitGroup
-	msgID                  atomic.Int64
-	encryptedKey           []byte // precomputed from encryptKey
+	appID, appSecret  string
+	verificationToken string
+	encryptKey        string
+	webhookAddr       string
+	allowedOpenIDs    map[string]bool // nil or empty = allow all
+	bot               *lark.Bot
+	server            *http.Server
+	messages          chan *Message
+	done              chan struct{}
+	wg                sync.WaitGroup
+	encryptedKey      []byte // precomputed from encryptKey
+
+	// Event dedup: Feishu retries delivery, so we track seen event IDs.
+	seenMu sync.Mutex
+	seen   map[string]time.Time
 }
 
 // NewFeishuChannel creates a new Feishu channel from config.
@@ -45,14 +52,21 @@ func NewFeishuChannel(cfg *config.Config) Channel {
 		return nil
 	}
 
+	allowedOpenIDs := make(map[string]bool)
+	for _, id := range cfg.GetFeishuAllowedOpenIDs() {
+		allowedOpenIDs[id] = true
+	}
+
 	ch := &FeishuChannel{
 		appID:             appID,
 		appSecret:         appSecret,
 		verificationToken: cfg.GetFeishuVerificationToken(),
 		encryptKey:        cfg.GetFeishuEncryptKey(),
 		webhookAddr:       cfg.GetFeishuWebhookAddr(),
+		allowedOpenIDs:    allowedOpenIDs,
 		messages:          make(chan *Message, feishuMessageBufferSize),
 		done:              make(chan struct{}),
+		seen:              make(map[string]time.Time),
 	}
 
 	if ch.encryptKey != "" {
@@ -79,8 +93,13 @@ func (f *FeishuChannel) Start(ctx context.Context) error {
 	mux.HandleFunc("/webhook/event", f.handleEvent)
 
 	f.server = &http.Server{
-		Addr:    f.webhookAddr,
-		Handler: mux,
+		Addr:              f.webhookAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		BaseContext:       func(_ net.Listener) context.Context { return ctx },
 	}
 
 	f.wg.Add(1)
@@ -89,6 +108,22 @@ func (f *FeishuChannel) Start(ctx context.Context) error {
 		logger.Info("feishu webhook listening", "addr", f.webhookAddr)
 		if err := f.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("feishu webhook server error", "err", err)
+		}
+	}()
+
+	// Periodic dedup cache cleanup.
+	f.wg.Add(1)
+	go func() {
+		defer f.wg.Done()
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-f.done:
+				return
+			case <-ticker.C:
+				f.cleanupSeen()
+			}
 		}
 	}()
 
@@ -103,7 +138,11 @@ func (f *FeishuChannel) Stop() error {
 		f.bot.StopHeartbeat()
 	}
 	if f.server != nil {
-		f.server.Shutdown(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := f.server.Shutdown(ctx); err != nil {
+			logger.Error("feishu webhook shutdown error", "err", err)
+		}
 	}
 	f.wg.Wait()
 	close(f.messages)
@@ -127,7 +166,7 @@ func (f *FeishuChannel) Send(ctx context.Context, resp *Response) error {
 		} else if strings.HasPrefix(replyTo, "group:") {
 			uid = lark.WithChatID(strings.TrimPrefix(replyTo, "group:"))
 		} else {
-			// Fallback: treat as open_id for backward compatibility.
+			// Fallback: treat as open_id.
 			uid = lark.WithOpenID(replyTo)
 		}
 
@@ -145,7 +184,12 @@ func (f *FeishuChannel) Messages() <-chan *Message {
 
 // handleEvent processes incoming Feishu webhook events.
 func (f *FeishuChannel) handleEvent(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, feishuMaxBodySize))
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -173,7 +217,9 @@ func (f *FeishuChannel) handleEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"challenge": challenge.Challenge})
+		if err := json.NewEncoder(w).Encode(map[string]string{"challenge": challenge.Challenge}); err != nil {
+			logger.Warn("feishu challenge response write error", "err", err)
+		}
 		return
 	}
 
@@ -191,12 +237,18 @@ func (f *FeishuChannel) handleEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Respond 200 immediately.
+	// Respond 200 immediately (Feishu retries if no response within 3s).
 	w.WriteHeader(http.StatusOK)
+
+	// Dedup: skip already-seen events.
+	eventID := event.Header.EventID
+	if eventID != "" && !f.markSeen(eventID) {
+		return
+	}
 
 	// Process message event.
 	if event.Header.EventType == lark.EventTypeMessageReceived {
-		f.processMessageEvent(event)
+		f.processMessageEvent(&event)
 	}
 }
 
@@ -216,11 +268,34 @@ type feishuFileContent struct {
 	FileName string `json:"file_name"`
 }
 
+// feishuMediaContent is the JSON structure for media (video) message content.
+type feishuMediaContent struct {
+	FileKey  string `json:"file_key"`
+	FileName string `json:"file_name"`
+	ImageKey string `json:"image_key"`
+	Duration int    `json:"duration"`
+}
+
+// feishuAudioContent is the JSON structure for audio message content.
+type feishuAudioContent struct {
+	FileKey  string `json:"file_key"`
+	Duration int    `json:"duration"`
+}
+
+// feishuStickerContent is the JSON structure for sticker message content.
+type feishuStickerContent struct {
+	FileKey string `json:"file_key"`
+}
+
 // processMessageEvent extracts a message from a Feishu message event.
-func (f *FeishuChannel) processMessageEvent(event lark.EventV2) {
+func (f *FeishuChannel) processMessageEvent(event *lark.EventV2) {
 	received, err := event.GetMessageReceived()
 	if err != nil {
 		logger.Error("feishu get message received error", "err", err)
+		return
+	}
+	if received.Sender.SenderID.OpenID == "" || received.Message.MessageID == "" {
+		logger.Debug("feishu ignoring event with missing sender or message ID")
 		return
 	}
 
@@ -241,8 +316,7 @@ func (f *FeishuChannel) processMessageEvent(event lark.EventV2) {
 			logger.Error("feishu image content parse error", "err", err)
 			return
 		}
-		metadata["media_type"] = "image"
-		metadata["image_key"] = content.ImageKey
+		metadata["media_summary"] = MediaSummary("image", "image_key", content.ImageKey)
 		text = "[Image received]"
 	case "file":
 		var content feishuFileContent
@@ -250,15 +324,39 @@ func (f *FeishuChannel) processMessageEvent(event lark.EventV2) {
 			logger.Error("feishu file content parse error", "err", err)
 			return
 		}
-		metadata["media_type"] = "file"
-		metadata["file_key"] = content.FileKey
-		metadata["file_name"] = content.FileName
-		text = fmt.Sprintf("[File: %s]", content.FileName)
+		metadata["media_summary"] = MediaSummary("file",
+			"file_key", content.FileKey, "file_name", content.FileName)
+		if content.FileName != "" {
+			text = fmt.Sprintf("[File: %s]", content.FileName)
+		} else {
+			text = "[File received]"
+		}
+	case "media":
+		var content feishuMediaContent
+		if err := json.Unmarshal([]byte(received.Message.Content), &content); err != nil {
+			logger.Error("feishu media content parse error", "err", err)
+			return
+		}
+		metadata["media_summary"] = MediaSummary("video",
+			"file_key", content.FileKey, "file_name", content.FileName,
+			"duration", fmtSeconds(content.Duration))
+		text = "[Video received]"
 	case "audio":
-		metadata["media_type"] = "audio"
+		var content feishuAudioContent
+		if err := json.Unmarshal([]byte(received.Message.Content), &content); err != nil {
+			logger.Error("feishu audio content parse error", "err", err)
+			return
+		}
+		metadata["media_summary"] = MediaSummary("audio",
+			"file_key", content.FileKey, "duration", fmtSeconds(content.Duration))
 		text = "[Audio received]"
 	case "sticker":
-		metadata["media_type"] = "sticker"
+		var content feishuStickerContent
+		if err := json.Unmarshal([]byte(received.Message.Content), &content); err != nil {
+			logger.Error("feishu sticker content parse error", "err", err)
+			return
+		}
+		metadata["media_summary"] = MediaSummary("sticker", "file_key", content.FileKey)
 		text = "[Sticker received]"
 	default:
 		logger.Debug("feishu ignoring unsupported message type", "type", received.Message.MessageType)
@@ -270,25 +368,35 @@ func (f *FeishuChannel) processMessageEvent(event lark.EventV2) {
 	}
 
 	openID := received.Sender.SenderID.OpenID
+
+	// Sender allowlist check.
+	if len(f.allowedOpenIDs) > 0 && !f.allowedOpenIDs[openID] {
+		logger.Warn("feishu message from unauthorized user", "openID", openID)
+		return
+	}
+
 	chatID := received.Message.ChatID
 	chatType := received.Message.ChatType // "p2p" or "group"
 
 	var replyTarget string
+	var channelID string
 	if chatType == "group" {
 		replyTarget = "group:" + chatID
+		channelID = "feishu:group:" + chatID
 	} else {
 		replyTarget = "p2p:" + openID
+		channelID = "feishu:" + openID
 	}
 
 	metadata["chat_id"] = replyTarget
 	metadata["chat_type"] = chatType
 	metadata["message_id"] = received.Message.MessageID
 
-	n := f.msgID.Add(1)
 	msg := &Message{
-		ID:        fmt.Sprintf("feishu-%d", n),
-		ChannelID: "feishu:" + openID,
+		ID:        received.Message.MessageID,
+		ChannelID: channelID,
 		UserID:    openID,
+		Username:  openID, // Feishu doesn't provide username in events; use openID as fallback.
 		Text:      text,
 		Metadata:  metadata,
 	}
@@ -296,5 +404,30 @@ func (f *FeishuChannel) processMessageEvent(event lark.EventV2) {
 	select {
 	case f.messages <- msg:
 	case <-f.done:
+	default:
+		logger.Warn("feishu message buffer full, dropping message")
+	}
+}
+
+// markSeen returns true if the eventID is new (first time seen), false if duplicate.
+func (f *FeishuChannel) markSeen(eventID string) bool {
+	f.seenMu.Lock()
+	defer f.seenMu.Unlock()
+	if _, exists := f.seen[eventID]; exists {
+		return false
+	}
+	f.seen[eventID] = time.Now()
+	return true
+}
+
+// cleanupSeen removes expired entries from the dedup cache.
+func (f *FeishuChannel) cleanupSeen() {
+	f.seenMu.Lock()
+	defer f.seenMu.Unlock()
+	cutoff := time.Now().Add(-feishuDedupTTL)
+	for id, t := range f.seen {
+		if t.Before(cutoff) {
+			delete(f.seen, id)
+		}
 	}
 }

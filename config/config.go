@@ -38,11 +38,21 @@ type ThreadConfig struct {
 
 // ProvidersConfig contains provider API configurations.
 type ProvidersConfig struct {
-	OpenRouter     *ProviderConfig `json:"openrouter,omitempty" yaml:"openrouter,omitempty"`
-	Anthropic      *ProviderConfig `json:"anthropic,omitempty" yaml:"anthropic,omitempty"`
-	DeepSeek       *ProviderConfig `json:"deepseek,omitempty" yaml:"deepseek,omitempty"`
-	MoonshotCN     *ProviderConfig `json:"moonshotCN,omitempty" yaml:"moonshotCN,omitempty"`
-	MoonshotGlobal *ProviderConfig `json:"moonshotGlobal,omitempty" yaml:"moonshotGlobal,omitempty"`
+	OpenRouter     *ProviderConfig   `json:"openrouter,omitempty" yaml:"openrouter,omitempty"`
+	Anthropic      *ProviderConfig   `json:"anthropic,omitempty" yaml:"anthropic,omitempty"`
+	DeepSeek       *ProviderConfig   `json:"deepseek,omitempty" yaml:"deepseek,omitempty"`
+	MoonshotCN     *ProviderConfig   `json:"moonshotCN,omitempty" yaml:"moonshotCN,omitempty"`
+	MoonshotGlobal *ProviderConfig   `json:"moonshotGlobal,omitempty" yaml:"moonshotGlobal,omitempty"`
+	OpenAIOAuth    *OAuthTokenConfig `json:"openaiOAuth,omitempty" yaml:"openaiOAuth,omitempty"`
+	AnthropicOAuth *OAuthTokenConfig `json:"anthropicOAuth,omitempty" yaml:"anthropicOAuth,omitempty"`
+}
+
+// OAuthTokenConfig stores an OAuth token with optional refresh capability.
+type OAuthTokenConfig struct {
+	AccessToken  string `json:"accessToken" yaml:"accessToken"`
+	RefreshToken string `json:"refreshToken,omitempty" yaml:"refreshToken,omitempty"`
+	ExpiresAt    int64  `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"` // unix timestamp, 0 = no expiry
+	TokenType    string `json:"tokenType,omitempty" yaml:"tokenType,omitempty"` // "bearer"
 }
 
 // ProviderConfig contains API credentials for a provider.
@@ -99,12 +109,13 @@ type TelegramChannelConfig struct {
 
 // FeishuChannelConfig contains Feishu (Lark) bot configuration.
 type FeishuChannelConfig struct {
-	AppID             string `json:"appId" yaml:"appId"`
-	AppSecret         string `json:"appSecret" yaml:"appSecret"`
-	VerificationToken string `json:"verificationToken,omitempty" yaml:"verificationToken,omitempty"`
-	EncryptKey        string `json:"encryptKey,omitempty" yaml:"encryptKey,omitempty"`
-	WebhookAddr       string `json:"webhookAddr,omitempty" yaml:"webhookAddr,omitempty"` // default: 127.0.0.1:9090
-	AdminOpenID       string `json:"adminOpenId,omitempty" yaml:"adminOpenId,omitempty"`
+	AppID             string   `json:"appId" yaml:"appId"`
+	AppSecret         string   `json:"appSecret" yaml:"appSecret"`
+	VerificationToken string   `json:"verificationToken,omitempty" yaml:"verificationToken,omitempty"`
+	EncryptKey        string   `json:"encryptKey,omitempty" yaml:"encryptKey,omitempty"`
+	WebhookAddr       string   `json:"webhookAddr,omitempty" yaml:"webhookAddr,omitempty"` // default: 127.0.0.1:9090
+	AdminOpenID       string   `json:"adminOpenId,omitempty" yaml:"adminOpenId,omitempty"`
+	AllowedOpenIDs    []string `json:"allowedOpenIds,omitempty" yaml:"allowedOpenIds,omitempty"` // empty = allow all
 }
 
 // WebChannelConfig contains Web chat configuration.

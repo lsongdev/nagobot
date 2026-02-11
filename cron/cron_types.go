@@ -21,7 +21,7 @@ type Job struct {
 	AtTime            time.Time `json:"at_time,omitempty"`
 	Task              string    `json:"task"`
 	Agent             string    `json:"agent,omitempty"`
-	ReportToSession   string    `json:"report_to_session,omitempty"`
+	WakeSession       string    `json:"wake_session,omitempty"`
 	Silent            bool      `json:"silent,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 }

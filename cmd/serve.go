@@ -152,7 +152,10 @@ func buildDefaultSinkFor(chMgr *channel.Manager, cfg *config.Config) func(string
 			}
 		}
 
-		// feishu:{openID} → send to that user via feishu.
+		// feishu:{openID} → send to that user via feishu P2P.
+		// Design: all feishu sessions (including group messages) are per-user.
+		// The per-wake sink from buildSink uses the original chat_id for reply routing,
+		// while this fallback sink (for cron/spawn) always replies via P2P.
 		if strings.HasPrefix(sessionKey, "feishu:") {
 			openID := strings.TrimPrefix(sessionKey, "feishu:")
 			if openID != "" {
@@ -240,7 +243,7 @@ func resolveServeTargets(cmd *cobra.Command) (finalServeCLI, finalServeTelegram,
 	}
 
 	if !finalServeCLI && !finalServeTelegram && !finalServeFeishu && !finalServeWeb {
-		return false, false, false, false, fmt.Errorf("no channels enabled; use --cli, --telegram, --feishu, --web, or --all")
+		return false, false, false, false, fmt.Errorf("no channels enabled; use --cli, --telegram, --feishu, or --web")
 	}
 	return finalServeCLI, finalServeTelegram, finalServeFeishu, finalServeWeb, nil
 }

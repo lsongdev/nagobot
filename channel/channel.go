@@ -4,7 +4,9 @@ package channel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/linanwx/nagobot/logger"
 )
@@ -138,4 +140,61 @@ func (m *Manager) Each(fn func(Channel)) {
 	for _, ch := range m.channels {
 		fn(ch)
 	}
+}
+
+// MediaSummary builds a formatted media summary string for LLM consumption.
+// kvs are alternating key-value pairs; empty values are skipped.
+func MediaSummary(mediaType string, kvs ...string) string {
+	parts := []string{fmt.Sprintf("[Media: %s]", mediaType)}
+	for i := 0; i+1 < len(kvs); i += 2 {
+		if kvs[i+1] != "" {
+			parts = append(parts, kvs[i]+": "+kvs[i+1])
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// fmtSeconds formats seconds as "Ns" for MediaSummary; returns "" for zero.
+func fmtSeconds(s int) string {
+	if s > 0 {
+		return fmt.Sprintf("%ds", s)
+	}
+	return ""
+}
+
+// SplitMessage splits a long message into chunks (byte-based maxLen),
+// preferring newline boundaries and avoiding mid-rune splits.
+func SplitMessage(text string, maxLen int) []string {
+	if len(text) <= maxLen {
+		return []string{text}
+	}
+
+	var chunks []string
+	for len(text) > 0 {
+		if len(text) <= maxLen {
+			chunks = append(chunks, text)
+			break
+		}
+
+		// Try to split at newline within the byte window.
+		splitAt := maxLen
+		if idx := strings.LastIndex(text[:maxLen], "\n"); idx > maxLen/2 {
+			splitAt = idx + 1
+		}
+
+		// Avoid splitting in the middle of a multi-byte UTF-8 character.
+		for splitAt > 0 && !utf8.RuneStart(text[splitAt]) {
+			splitAt--
+		}
+		if splitAt == 0 {
+			// Entire prefix is a continuation byte sequence; advance past the rune.
+			_, size := utf8.DecodeRuneInString(text)
+			splitAt = size
+		}
+
+		chunks = append(chunks, text[:splitAt])
+		text = text[splitAt:]
+	}
+
+	return chunks
 }

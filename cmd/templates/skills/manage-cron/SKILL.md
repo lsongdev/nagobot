@@ -8,11 +8,11 @@ description: Manage scheduled cron jobs (create, update, remove, list).
 
 1. **Add/update a recurring job**:
    ```
-   exec: {{WORKSPACE}}/bin/nagobot cron set-cron --id <id> --expr "<cron-expr>" --task "<task>" [--agent <name>] [--report-to-session <key>] [--silent]
+   exec: {{WORKSPACE}}/bin/nagobot cron set-cron --id <id> --expr "<cron-expr>" --task "<task>" [--agent <name>] [--wake-session <key>] [--silent]
    ```
 2. **Add/update a one-time job**:
    ```
-   exec: {{WORKSPACE}}/bin/nagobot cron set-at --id <id> --at "<RFC3339>" --task "<task>" [--agent <name>] [--report-to-session <key>] [--silent]
+   exec: {{WORKSPACE}}/bin/nagobot cron set-at --id <id> --at "<RFC3339>" --task "<task>" [--agent <name>] [--wake-session <key>] [--silent]
    ```
 3. **Remove jobs**:
    ```
@@ -32,14 +32,14 @@ Using the same `--id` with `set-cron` or `set-at` will update (upsert) the exist
 - `--at`: execution time in RFC3339, e.g. `"2026-02-07T18:30:00+08:00"` (required for set-at).
 - `--task`: detailed instructions for the child thread. Include objective, scope, constraints, and expected output. ~100–800 characters recommended. Wrap in double quotes; escape inner double quotes with `\"`.
 - `--agent`: optional agent template name from `agents/*.md`.
-- `--report-to-session`: session key to receive the result when job completes. Defaults to `main`. Use `telegram:<userID>` to report to a specific Telegram user (e.g. `telegram:123456`).
+- `--wake-session`: session to inject the result into and wake for execution. That session will run inference and deliver the result to the user. Defaults to `main`. Use `telegram:<userID>` to target a specific Telegram user (e.g. `telegram:123456`).
 - `--silent`: suppress result delivery entirely.
 
 ## Examples
 
 Add a daily summary job at 09:00:
 ```
-{{WORKSPACE}}/bin/nagobot cron set-cron --id daily-summary --expr "0 9 * * *" --task "Review recent session activity and produce a daily summary: completed work, pending actions, immediate next steps. Highlight blockers and reference key files." --agent GENERAL --report-to-session main
+{{WORKSPACE}}/bin/nagobot cron set-cron --id daily-summary --expr "0 9 * * *" --task "Review recent session activity and produce a daily summary: completed work, pending actions, immediate next steps. Highlight blockers and reference key files." --agent GENERAL --wake-session main
 ```
 
 Add a one-time cleanup job:
@@ -49,7 +49,7 @@ Add a one-time cleanup job:
 
 Update an existing job (same `--id` overwrites):
 ```
-{{WORKSPACE}}/bin/nagobot cron set-cron --id daily-summary --expr "0 8 * * 1-5" --task "Weekday morning briefing: summarize overnight changes, open issues, and today's priorities." --agent GENERAL --report-to-session main
+{{WORKSPACE}}/bin/nagobot cron set-cron --id daily-summary --expr "0 8 * * 1-5" --task "Weekday morning briefing: summarize overnight changes, open issues, and today's priorities." --agent GENERAL --wake-session main
 ```
 
 Remove jobs:

@@ -4,9 +4,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
+
+// saveMu serializes concurrent Config.Save() calls to prevent file corruption.
+var saveMu sync.Mutex
 
 // Load loads the configuration from disk.
 func Load() (*Config, error) {
@@ -33,14 +37,18 @@ func Load() (*Config, error) {
 }
 
 // Save saves the configuration to config.yaml.
+// Concurrent calls are serialized to prevent file corruption.
 func (c *Config) Save() error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
 	path, err := ConfigPath()
 	if err != nil {
 		return err
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -49,5 +57,5 @@ func (c *Config) Save() error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }

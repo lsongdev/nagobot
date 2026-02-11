@@ -183,6 +183,43 @@ func (c *Config) GetFeishuAdminOpenID() string {
 	return c.Channels.Feishu.AdminOpenID
 }
 
+// GetFeishuAllowedOpenIDs returns the Feishu allowed open IDs.
+func (c *Config) GetFeishuAllowedOpenIDs() []string {
+	if c == nil || c.Channels == nil || c.Channels.Feishu == nil {
+		return nil
+	}
+	return c.Channels.Feishu.AllowedOpenIDs
+}
+
+// GetOAuthToken returns the OAuth token config for the given provider name.
+func (c *Config) GetOAuthToken(providerName string) *OAuthTokenConfig {
+	if c == nil {
+		return nil
+	}
+	switch providerName {
+	case "openai":
+		return c.Providers.OpenAIOAuth
+	case "anthropic":
+		return c.Providers.AnthropicOAuth
+	}
+	return nil
+}
+
+// SetOAuthToken stores an OAuth token for the given provider name.
+func (c *Config) SetOAuthToken(providerName string, token *OAuthTokenConfig) {
+	switch providerName {
+	case "openai":
+		c.Providers.OpenAIOAuth = token
+	case "anthropic":
+		c.Providers.AnthropicOAuth = token
+	}
+}
+
+// ClearOAuthToken removes the OAuth token for the given provider name.
+func (c *Config) ClearOAuthToken(providerName string) {
+	c.SetOAuthToken(providerName, nil)
+}
+
 // ensureProviderConfig returns a mutable *ProviderConfig for the current
 // provider, creating it if nil.
 func (c *Config) ensureProviderConfig() *ProviderConfig {
