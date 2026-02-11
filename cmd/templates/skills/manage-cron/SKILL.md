@@ -30,9 +30,9 @@ Using the same `--id` with `set-cron` or `set-at` will update (upsert) the exist
 - `--id`: unique job identifier (required).
 - `--expr`: 5-field cron expression, e.g. `"0 9 * * *"` (required for set-cron).
 - `--at`: execution time in RFC3339, e.g. `"2026-02-07T18:30:00+08:00"` (required for set-at).
-- `--task`: detailed instructions for the child thread. Include objective, scope, constraints, and expected output. ~100–800 characters recommended. Wrap in double quotes; escape inner double quotes with `\"`.
+- `--task`: detailed instructions injected into a newly created cron thread that wakes and executes the task. Include objective, scope, constraints, and expected output. ~100–800 characters recommended. Wrap in double quotes; escape inner double quotes with `\"`.
 - `--agent`: optional agent template name from `agents/*.md`.
-- `--wake-session`: session to inject the result into and wake for execution. That session will run inference and deliver the result to the user. Defaults to `main`. Use `telegram:<userID>` to target a specific Telegram user (e.g. `telegram:123456`).
+- `--wake-session`: session to receive the execution result. The result is injected into this session, waking it to run inference and deliver to the user. Defaults to `main`. Use `telegram:<userID>` to target a specific Telegram user (e.g. `telegram:123456`).
 - `--silent`: suppress result delivery entirely.
 
 ## Examples
